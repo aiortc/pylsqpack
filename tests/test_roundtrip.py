@@ -14,11 +14,11 @@ class RoundtripTest(TestCase):
         control, data = encoder.encode(
             stream_id, seqno, [(b"one", b"foo"), (b"two", b"bar")]
         )
-        self.assertEqual(control, b'')
-        self.assertEqual(data, b'\x00\x00*=E\x82\x94\xe7#two\x03bar')
+        self.assertEqual(control, b"")
+        self.assertEqual(data, b"\x00\x00*=E\x82\x94\xe7#two\x03bar")
 
         # decode headers
         decoder.feed_control(control)
         control, headers = decoder.feed_header(stream_id, data)
-        self.assertEqual(control, b'')
+        self.assertEqual(control, b"")
         self.assertEqual(headers, [(b"one", b"foo"), (b"two", b"bar")])
