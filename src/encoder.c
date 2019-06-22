@@ -91,8 +91,26 @@ Encoder_encode(EncoderObject *self, PyObject *args)
     );
 }
 
+static PyObject*
+Encoder_feed_control(EncoderObject *self, PyObject *args)
+{
+    const unsigned char *data = NULL;
+    int data_len = 0;
+
+    if (!PyArg_ParseTuple(args, "y#", &data, &data_len))
+        return NULL;
+
+    if (lsqpack_enc_decoder_in(&self->enc, data, data_len) < 0) {
+        PyErr_SetString(PyExc_RuntimeError, "lsqpack_enc_decoder_in failed");
+        return NULL;
+    }
+
+    Py_RETURN_NONE;
+}
+
 static PyMethodDef Encoder_methods[] = {
     {"encode", (PyCFunction)Encoder_encode, METH_VARARGS, "Encode a list of headers."},
+    {"feed_control", (PyCFunction)Encoder_feed_control, METH_VARARGS, "Feed data from the control stream."},
     {NULL}
 };
 

@@ -1,9 +1,12 @@
 #include <Python.h>
 #include "lsqpack.h"
 
+#define DEC_BUF_SZ 4096
+
 typedef struct {
     PyObject_HEAD
     struct lsqpack_dec dec;
+    unsigned char dec_buf[DEC_BUF_SZ];
 } DecoderObject;
 
 static int
@@ -50,12 +53,13 @@ Decoder_feed_header(DecoderObject *self, PyObject *args)
     struct lsqpack_header_set *hset;
     struct lsqpack_header *header;
     PyObject *list, *tuple, *name, *value;
+    size_t dec_len = DEC_BUF_SZ;
 
     if (!PyArg_ParseTuple(args, "Ky#", &stream_id, &data, &data_len))
         return NULL;
 
-    if (lsqpack_dec_header_in(&self->dec, NULL, stream_id, data_len, &data, data_len, &hset, NULL, NULL) != LQRHS_DONE) {
-        PyErr_SetString(PyExc_RuntimeError, "Failed to feed data to decoder");
+    if (lsqpack_dec_header_in(&self->dec, NULL, stream_id, data_len, &data, data_len, &hset, self->dec_buf, &dec_len) != LQRHS_DONE) {
+        PyErr_SetString(PyExc_RuntimeError, "lsqpack_dec_header_in failed");
         return NULL;
     }
 
@@ -71,7 +75,11 @@ Decoder_feed_header(DecoderObject *self, PyObject *args)
     }
     lsqpack_dec_destroy_header_set(hset);
 
-    return list;
+    return PyTuple_Pack(
+        2,
+        PyBytes_FromStringAndSize((const char*)self->dec_buf, dec_len),
+        list
+    );
 }
 
 static PyMethodDef Decoder_methods[] = {
