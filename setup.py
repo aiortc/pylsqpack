@@ -10,7 +10,7 @@ with open(readme_file, encoding='utf-8') as f:
 setuptools.setup(
     name='pylsqpack',
     version='0.1.0',
-    description='An wrapper for the ls-qpack QPACK library',
+    description='Python wrapper for the ls-qpack QPACK library',
     long_description=long_description,
     url='https://github.com/aiortc/pylsqpack',
     author='Jeremy Lainé',
