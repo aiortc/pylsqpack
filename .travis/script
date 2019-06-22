@@ -1,0 +1,17 @@
+#!/bin/sh
+
+set -e
+
+if [ "$BUILD" = "lint" ]; then
+    flake8 tests
+    isort -c -df -rc tests
+    black --check --diff tests
+elif [ "$BUILD" = "sdist" ]; then
+    python3 setup.py sdist
+    if [ -n "$TRAVIS_TAG" ]; then
+        python3 -m twine upload --skip-existing dist/*
+    fi
+else
+    coverage run setup.py test
+    curl -s https://codecov.io/bash | bash
+fi
