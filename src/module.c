@@ -19,12 +19,12 @@ typedef struct {
 static int
 Decoder_init(DecoderObject *self, PyObject *args, PyObject *kwargs)
 {
-    char *kwlist[] = {"dyn_table_size", "max_risked_streams", NULL};
-    unsigned dyn_table_size, max_risked_streams;
-    if (!PyArg_ParseTupleAndKeywords(args, kwargs, "II", kwlist, &dyn_table_size, &max_risked_streams))
+    char *kwlist[] = {"max_table_capacity", "blocked_streams", NULL};
+    unsigned max_table_capacity, blocked_streams;
+    if (!PyArg_ParseTupleAndKeywords(args, kwargs, "II", kwlist, &max_table_capacity, &blocked_streams))
         return -1;
 
-    lsqpack_dec_init(&self->dec, NULL, dyn_table_size, max_risked_streams, NULL);
+    lsqpack_dec_init(&self->dec, NULL, max_table_capacity, blocked_streams, NULL);
     return 0;
 }
 
@@ -35,7 +35,7 @@ Decoder_dealloc(DecoderObject *self)
 }
 
 static PyObject*
-Decoder_feed_control(DecoderObject *self, PyObject *args)
+Decoder_feed_encoder(DecoderObject *self, PyObject *args)
 {
     const unsigned char *data = NULL;
     int data_len = 0;
@@ -44,7 +44,7 @@ Decoder_feed_control(DecoderObject *self, PyObject *args)
         return NULL;
 
     if (lsqpack_dec_enc_in(&self->dec, data, data_len) < 0) {
-        PyErr_SetString(PyExc_RuntimeError, "Failed to feed control to decoder");
+        PyErr_SetString(PyExc_RuntimeError, "lsqpack_dec_enc_in failed");
         return NULL;
     }
 
@@ -61,12 +61,14 @@ Decoder_feed_header(DecoderObject *self, PyObject *args)
     struct lsqpack_header *header;
     PyObject *list, *tuple, *name, *value;
     size_t dec_len = DEC_BUF_SZ;
+    enum lsqpack_read_header_status status;
 
     if (!PyArg_ParseTuple(args, "Ky#", &stream_id, &data, &data_len))
         return NULL;
 
-    if (lsqpack_dec_header_in(&self->dec, NULL, stream_id, data_len, &data, data_len, &hset, self->dec_buf, &dec_len) != LQRHS_DONE) {
-        PyErr_SetString(PyExc_RuntimeError, "lsqpack_dec_header_in failed");
+    status = lsqpack_dec_header_in(&self->dec, NULL, stream_id, data_len, &data, data_len, &hset, self->dec_buf, &dec_len);
+    if (status != LQRHS_DONE) {
+        PyErr_Format(PyExc_RuntimeError, "lsqpack_dec_header_in failed (%d)", status);
         return NULL;
     }
 
@@ -90,7 +92,7 @@ Decoder_feed_header(DecoderObject *self, PyObject *args)
 }
 
 static PyMethodDef Decoder_methods[] = {
-    {"feed_control", (PyCFunction)Decoder_feed_control, METH_VARARGS, "Feed data from the control stream."},
+    {"feed_encoder", (PyCFunction)Decoder_feed_encoder, METH_VARARGS, "Feed data from the encoder stream."},
     {"feed_header", (PyCFunction)Decoder_feed_header, METH_VARARGS, "Feed data from a data stream."},
     {NULL}
 };
@@ -159,6 +161,26 @@ Encoder_dealloc(EncoderObject *self)
 }
 
 static PyObject*
+Encoder_apply_settings(EncoderObject *self, PyObject *args, PyObject *kwargs)
+{
+    char *kwlist[] = {"max_table_capacity", "blocked_streams", NULL};
+    unsigned max_table_capacity, blocked_streams;
+    unsigned char tsu_buf[LSQPACK_LONGEST_TSU];
+    size_t tsu_len = sizeof(tsu_buf);
+
+    if (!PyArg_ParseTupleAndKeywords(args, kwargs, "II", kwlist, &max_table_capacity, &blocked_streams))
+        return NULL;
+
+    if (lsqpack_enc_init(&self->enc, NULL, max_table_capacity, max_table_capacity, blocked_streams,
+                         LSQPACK_ENC_OPT_STAGE_2, tsu_buf, &tsu_len) != 0) {
+        PyErr_SetString(PyExc_RuntimeError, "lsqpack_enc_init failed");
+        return NULL;
+    }
+
+    return PyBytes_FromStringAndSize((const char*)tsu_buf, tsu_len);
+}
+
+static PyObject*
 Encoder_encode(EncoderObject *self, PyObject *args)
 {
     uint64_t stream_id;
@@ -224,7 +246,7 @@ Encoder_encode(EncoderObject *self, PyObject *args)
 }
 
 static PyObject*
-Encoder_feed_control(EncoderObject *self, PyObject *args)
+Encoder_feed_decoder(EncoderObject *self, PyObject *args)
 {
     const unsigned char *data = NULL;
     int data_len = 0;
@@ -241,8 +263,9 @@ Encoder_feed_control(EncoderObject *self, PyObject *args)
 }
 
 static PyMethodDef Encoder_methods[] = {
+    {"apply_settings", (PyCFunction)Encoder_apply_settings, METH_VARARGS | METH_KEYWORDS, "Apply the settings received from the encoder."},
     {"encode", (PyCFunction)Encoder_encode, METH_VARARGS, "Encode a list of headers."},
-    {"feed_control", (PyCFunction)Encoder_feed_control, METH_VARARGS, "Feed data from the control stream."},
+    {"feed_decoder", (PyCFunction)Encoder_feed_decoder, METH_VARARGS, "Feed data from the decoder stream."},
     {NULL}
 };
 
