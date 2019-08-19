@@ -1,3 +1,5 @@
+#define PY_SSIZE_T_CLEAN
+
 #include <Python.h>
 #include "lsqpack.h"
 
@@ -110,8 +112,8 @@ static PyObject*
 Decoder_feed_encoder(DecoderObject *self, PyObject *args, PyObject *kwargs)
 {
     char *kwlist[] = {"data", NULL};
-    const unsigned char *data = NULL;
-    int data_len = 0;
+    const unsigned char *data;
+    Py_ssize_t data_len;
     PyObject *list, *value;
     struct header_block *hblock;
 
@@ -138,8 +140,8 @@ Decoder_feed_header(DecoderObject *self, PyObject *args, PyObject *kwargs)
 {
     char *kwlist[] = {"stream_id", "data", NULL};
     uint64_t stream_id;
-    const unsigned char *data = NULL;
-    int data_len = 0;
+    const unsigned char *data;
+    Py_ssize_t data_len;
     PyObject *list;
     size_t dec_len = DEC_BUF_SZ;
     enum lsqpack_read_header_status status;
@@ -411,8 +413,8 @@ Encoder_encode(EncoderObject *self, PyObject *args)
 static PyObject*
 Encoder_feed_decoder(EncoderObject *self, PyObject *args)
 {
-    const unsigned char *data = NULL;
-    int data_len = 0;
+    const unsigned char *data;
+    Py_ssize_t data_len;
 
     if (!PyArg_ParseTuple(args, "y#", &data, &data_len))
         return NULL;
