@@ -7,6 +7,8 @@ matrix:
     install: pip install black flake8 isort
   - env: BUILD=test
   - env: BUILD=test
+    python: "3.8-dev"
+  - env: BUILD=test
     python: "3.6"
   - env: BUILD=test
     python: "3.5"
