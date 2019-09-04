@@ -1,7 +1,7 @@
 import binascii
 from unittest import TestCase
 
-from pylsqpack import Decoder, DecompressionFailed, StreamBlocked
+from pylsqpack import Decoder, DecompressionFailed, EncoderStreamError, StreamBlocked
 
 
 class DecoderTest(TestCase):
@@ -80,3 +80,9 @@ class DecoderTest(TestCase):
         self.assertEqual(
             str(cm.exception), "lsqpack_dec_header_in for stream 0 failed (3)"
         )
+
+    def test_encoder_stream_error(self):
+        decoder = Decoder(0x100, 0x10)
+        with self.assertRaises(EncoderStreamError) as cm:
+            decoder.feed_encoder(b"\x00")
+        self.assertEqual(str(cm.exception), "lsqpack_dec_enc_in failed")

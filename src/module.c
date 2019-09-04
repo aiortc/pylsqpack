@@ -11,6 +11,8 @@
 #define PREFIX_MAX_SIZE 16
 
 static PyObject *DecompressionFailed;
+static PyObject *DecoderStreamError;
+static PyObject *EncoderStreamError;
 static PyObject *StreamBlocked;
 
 struct header_block {
@@ -122,7 +124,7 @@ Decoder_feed_encoder(DecoderObject *self, PyObject *args, PyObject *kwargs)
         return NULL;
 
     if (lsqpack_dec_enc_in(&self->dec, data, data_len) < 0) {
-        PyErr_SetString(PyExc_RuntimeError, "lsqpack_dec_enc_in failed");
+        PyErr_SetString(EncoderStreamError, "lsqpack_dec_enc_in failed");
         return NULL;
     }
 
@@ -420,7 +422,7 @@ Encoder_feed_decoder(EncoderObject *self, PyObject *args)
         return NULL;
 
     if (lsqpack_enc_decoder_in(&self->enc, data, data_len) < 0) {
-        PyErr_SetString(PyExc_RuntimeError, "lsqpack_enc_decoder_in failed");
+        PyErr_SetString(DecoderStreamError, "lsqpack_enc_decoder_in failed");
         return NULL;
     }
 
@@ -500,6 +502,14 @@ PyInit_pylsqpack(void)
     DecompressionFailed = PyErr_NewException(MODULE_NAME ".DecompressionFailed", PyExc_ValueError, NULL);
     Py_INCREF(DecompressionFailed);
     PyModule_AddObject(m, "DecompressionFailed", DecompressionFailed);
+
+    DecoderStreamError = PyErr_NewException(MODULE_NAME ".DecoderStreamError", PyExc_ValueError, NULL);
+    Py_INCREF(DecoderStreamError);
+    PyModule_AddObject(m, "DecoderStreamError", DecoderStreamError);
+
+    EncoderStreamError = PyErr_NewException(MODULE_NAME ".EncoderStreamError", PyExc_ValueError, NULL);
+    Py_INCREF(EncoderStreamError);
+    PyModule_AddObject(m, "EncoderStreamError", EncoderStreamError);
 
     StreamBlocked = PyErr_NewException(MODULE_NAME ".StreamBlocked", PyExc_ValueError, NULL);
     Py_INCREF(StreamBlocked);
