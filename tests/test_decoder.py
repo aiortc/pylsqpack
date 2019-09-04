@@ -52,6 +52,12 @@ class DecoderTest(TestCase):
         # free the decoder
         del decoder
 
+    def test_invalid(self):
+        decoder = Decoder(0x100, 0x10)
+
+        with self.assertRaises(RuntimeError):
+            decoder.feed_header(0, b"1")
+
     def test_blocked_stream_free(self):
         decoder = Decoder(0x100, 0x10)
         stream_id = 0

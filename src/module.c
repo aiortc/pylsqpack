@@ -178,7 +178,6 @@ Decoder_feed_header(DecoderObject *self, PyObject *args, PyObject *kwargs)
         return NULL;
     } else if (status != LQRHS_DONE) {
         PyErr_Format(PyExc_RuntimeError, "lsqpack_dec_header_in for stream %d failed (%d)", stream_id, status);
-        STAILQ_REMOVE(&self->pending_blocks, hblock, header_block, entries);
         header_block_free(hblock);
         return NULL;
     }
