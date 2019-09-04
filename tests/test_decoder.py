@@ -1,7 +1,7 @@
 import binascii
 from unittest import TestCase
 
-from pylsqpack import Decoder, StreamBlocked
+from pylsqpack import Decoder, DecompressionFailed, StreamBlocked
 
 
 class DecoderTest(TestCase):
@@ -52,12 +52,6 @@ class DecoderTest(TestCase):
         # free the decoder
         del decoder
 
-    def test_invalid(self):
-        decoder = Decoder(0x100, 0x10)
-
-        with self.assertRaises(RuntimeError):
-            decoder.feed_header(0, b"1")
-
     def test_blocked_stream_free(self):
         decoder = Decoder(0x100, 0x10)
         stream_id = 0
@@ -68,3 +62,21 @@ class DecoderTest(TestCase):
 
         # free the decoder with pending block
         del decoder
+
+    def test_decompression_failed_too_short(self):
+        decoder = Decoder(0x100, 0x10)
+
+        with self.assertRaises(DecompressionFailed) as cm:
+            decoder.feed_header(0, b"")
+        self.assertEqual(
+            str(cm.exception), "lsqpack_dec_header_in for stream 0 failed (3)"
+        )
+
+    def test_decompression_failed_invalid(self):
+        decoder = Decoder(0x100, 0x10)
+
+        with self.assertRaises(DecompressionFailed) as cm:
+            decoder.feed_header(0, b"123")
+        self.assertEqual(
+            str(cm.exception), "lsqpack_dec_header_in for stream 0 failed (3)"
+        )

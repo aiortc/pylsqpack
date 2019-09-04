@@ -10,6 +10,7 @@
 #define HDR_BUF_SZ 4096
 #define PREFIX_MAX_SIZE 16
 
+static PyObject *DecompressionFailed;
 static PyObject *StreamBlocked;
 
 struct header_block {
@@ -19,7 +20,7 @@ struct header_block {
     unsigned char *data;
     size_t data_len;
     const unsigned char *data_ptr;
-    struct lsqpack_header_set *hset;
+    struct lsqpack_header_list *hlist;
     uint64_t stream_id;
 };
 
@@ -40,21 +41,21 @@ static void header_block_free(struct header_block *hblock)
     free(hblock->data);
     hblock->data = 0;
     hblock->data_ptr = 0;
-    if (hblock->hset) {
-        lsqpack_dec_destroy_header_set(hblock->hset);
-        hblock->hset = 0;
+    if (hblock->hlist) {
+        lsqpack_dec_destroy_header_list(hblock->hlist);
+        hblock->hlist = 0;
     }
     free(hblock);
 }
 
-static PyObject *hset_to_headers(struct lsqpack_header_set *hset)
+static PyObject *hlist_to_headers(struct lsqpack_header_list *hlist)
 {
     PyObject *list, *tuple, *name, *value;
     struct lsqpack_header *header;
 
-    list = PyList_New(hset->qhs_count);
-    for (size_t i = 0; i < hset->qhs_count; ++i) {
-        header = hset->qhs_headers[i];
+    list = PyList_New(hlist->qhl_count);
+    for (size_t i = 0; i < hlist->qhl_count; ++i) {
+        header = hlist->qhl_headers[i];
         name = PyBytes_FromStringAndSize(header->qh_name, header->qh_name_len);
         value = PyBytes_FromStringAndSize(header->qh_value, header->qh_value_len);
         tuple = PyTuple_Pack(2, name, value);
@@ -166,7 +167,7 @@ Decoder_feed_header(DecoderObject *self, PyObject *args, PyObject *kwargs)
         hblock->data_len,
         &hblock->data_ptr,
         hblock->data_len,
-        &hblock->hset,
+        &hblock->hlist,
         self->dec_buf,
         &dec_len
     );
@@ -177,12 +178,12 @@ Decoder_feed_header(DecoderObject *self, PyObject *args, PyObject *kwargs)
         PyErr_Format(StreamBlocked, "stream %d is blocked", stream_id);
         return NULL;
     } else if (status != LQRHS_DONE) {
-        PyErr_Format(PyExc_RuntimeError, "lsqpack_dec_header_in for stream %d failed (%d)", stream_id, status);
+        PyErr_Format(DecompressionFailed, "lsqpack_dec_header_in for stream %d failed (%d)", stream_id, status);
         header_block_free(hblock);
         return NULL;
     }
 
-    list = hset_to_headers(hblock->hset);
+    list = hlist_to_headers(hblock->hlist);
     header_block_free(hblock);
 
     return PyTuple_Pack(
@@ -226,7 +227,7 @@ Decoder_resume_header(DecoderObject *self, PyObject *args, PyObject *kwargs)
             hblock,
             &hblock->data_ptr,
             hblock->data_len - (hblock->data_ptr - hblock->data),
-            &hblock->hset,
+            &hblock->hlist,
             self->dec_buf,
             &dec_len
         );
@@ -237,13 +238,13 @@ Decoder_resume_header(DecoderObject *self, PyObject *args, PyObject *kwargs)
         PyErr_Format(StreamBlocked, "stream %d is blocked", stream_id);
         return NULL;
     } else if (status != LQRHS_DONE) {
-        PyErr_Format(PyExc_RuntimeError, "lsqpack_dec_header_in for stream %d failed (%d)", stream_id, status);
+        PyErr_Format(DecompressionFailed, "lsqpack_dec_header_in for stream %d failed (%d)", stream_id, status);
         STAILQ_REMOVE(&self->pending_blocks, hblock, header_block, entries);
         header_block_free(hblock);
         return NULL;
     }
 
-    list = hset_to_headers(hblock->hset);
+    list = hlist_to_headers(hblock->hlist);
     STAILQ_REMOVE(&self->pending_blocks, hblock, header_block, entries);
     header_block_free(hblock);
 
@@ -329,7 +330,7 @@ Encoder_apply_settings(EncoderObject *self, PyObject *args, PyObject *kwargs)
 {
     char *kwlist[] = {"max_table_capacity", "blocked_streams", NULL};
     unsigned max_table_capacity, blocked_streams;
-    unsigned char tsu_buf[LSQPACK_LONGEST_TSU];
+    unsigned char tsu_buf[LSQPACK_LONGEST_SDTC];
     size_t tsu_len = sizeof(tsu_buf);
 
     if (!PyArg_ParseTupleAndKeywords(args, kwargs, "II", kwlist, &max_table_capacity, &blocked_streams))
@@ -495,6 +496,10 @@ PyInit_pylsqpack(void)
     m = PyModule_Create(&moduledef);
     if (m == NULL)
         return NULL;
+
+    DecompressionFailed = PyErr_NewException(MODULE_NAME ".DecompressionFailed", PyExc_ValueError, NULL);
+    Py_INCREF(DecompressionFailed);
+    PyModule_AddObject(m, "DecompressionFailed", DecompressionFailed);
 
     StreamBlocked = PyErr_NewException(MODULE_NAME ".StreamBlocked", PyExc_ValueError, NULL);
     Py_INCREF(StreamBlocked);
