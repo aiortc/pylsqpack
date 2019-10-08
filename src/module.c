@@ -397,7 +397,7 @@ Encoder_encode(EncoderObject *self, PyObject *args)
         hdr_off += hdr_len;
     }
 
-    pfx_len = lsqpack_enc_end_header(&self->enc, self->pfx_buf, PREFIX_MAX_SIZE);
+    pfx_len = lsqpack_enc_end_header(&self->enc, self->pfx_buf, PREFIX_MAX_SIZE, NULL);
     if (pfx_len <= 0) {
         PyErr_SetString(PyExc_RuntimeError, "lsqpack_enc_start_header failed");
         return NULL;
