@@ -1,10 +1,7 @@
 pylsqpack
 =========
 
-|rtd| |pypi-v| |pypi-pyversions| |pypi-l| |travis|
-
-.. |rtd| image:: https://readthedocs.org/projects/pylsqpack/badge/?version=latest
-    :target: https://pylsqpack.readthedocs.io/
+|pypi-v| |pypi-pyversions| |pypi-l| |travis|
 
 .. |pypi-v| image:: https://img.shields.io/pypi/v/pylsqpack.svg
     :target: https://pypi.python.org/pypi/pylsqpack
@@ -22,7 +19,13 @@ pylsqpack
 `Decoder` and `Encoder` objects to read or write HTTP/3 headers compressed
 with QPACK.
 
-To learn more about ``pylsqpack`` please `read the documentation`_.
+.. automodule:: pylsqpack
+
+    .. autoclass:: Decoder
+        :members:
+
+    .. autoclass:: Encoder
+        :members:
+
 
 .. _ls-qpack: https://github.com/litespeedtech/ls-qpack/
-.. _read the documentation: https://pylsqpack.readthedocs.io/en/latest/
