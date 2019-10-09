@@ -138,6 +138,14 @@ Decoder_feed_encoder(DecoderObject *self, PyObject *args, PyObject *kwargs)
     return list;
 }
 
+PyDoc_STRVAR(Decoder_feed_encoder__doc__,
+    "feed_encoder(data: bytes) -> List[int]\n\n"
+    "Feed data from the encoder stream.\n\n"
+    "If processing the data unblocked any streams, their IDs are returned, "
+    "and :meth:`resume_header()` must be called for each stream ID.\n\n"
+    "If the data cannot be processed, :class:`EncoderStreamError` is raised.\n\n"
+    ":param data: the encoder stream data\n");
+
 static PyObject*
 Decoder_feed_header(DecoderObject *self, PyObject *args, PyObject *kwargs)
 {
@@ -194,6 +202,14 @@ Decoder_feed_header(DecoderObject *self, PyObject *args, PyObject *kwargs)
         list
     );
 }
+
+PyDoc_STRVAR(Decoder_feed_header__doc__,
+    "feed_header(stream_id: int, data: bytes) -> List[Tuple[bytes, bytes]]\n\n"
+    "Decode a header block and return headers.\n\n"
+    "If the stream is blocked, :class:`StreamBlocked` is raised.\n\n"
+    "If the data cannot be processed, :class:`DecompressionFailed` is raised.\n\n"
+    ":param stream_id: the ID of the stream\n"
+    ":param data: the header block data\n");
 
 static PyObject*
 Decoder_resume_header(DecoderObject *self, PyObject *args, PyObject *kwargs)
@@ -257,12 +273,25 @@ Decoder_resume_header(DecoderObject *self, PyObject *args, PyObject *kwargs)
     );
 }
 
+PyDoc_STRVAR(Decoder_resume_header__doc__,
+    "resume_header(stream_id: int) -> List[Tuple[bytes, bytes]]\n\n"
+    "Continue decoding a header block and return headers.\n\n"
+    "This method should be called only when :meth:`feed_encoder` indicates "
+    "that a stream has become unblocked\n\n"
+    ":param stream_id: the ID of the stream\n");
+
 static PyMethodDef Decoder_methods[] = {
-    {"feed_encoder", (PyCFunction)Decoder_feed_encoder, METH_VARARGS | METH_KEYWORDS, "Feed data from the encoder stream."},
-    {"feed_header", (PyCFunction)Decoder_feed_header, METH_VARARGS | METH_KEYWORDS, "Start decoding a header block and return headers."},
-    {"resume_header", (PyCFunction)Decoder_resume_header, METH_VARARGS | METH_KEYWORDS, "Continue decoding a header block and return headers."},
+    {"feed_encoder", (PyCFunction)Decoder_feed_encoder, METH_VARARGS | METH_KEYWORDS, Decoder_feed_encoder__doc__},
+    {"feed_header", (PyCFunction)Decoder_feed_header, METH_VARARGS | METH_KEYWORDS, Decoder_feed_header__doc__},
+    {"resume_header", (PyCFunction)Decoder_resume_header, METH_VARARGS | METH_KEYWORDS, Decoder_resume_header__doc__},
     {NULL}
 };
+
+PyDoc_STRVAR(Decoder__doc__,
+    "Decoder(max_table_capacity: int, blocked_streams: int)\n\n"
+    "QPACK decoder.\n\n"
+    ":param max_table_capacity: the maximum size in bytes of the dynamic table\n"
+    ":param blocked_streams: the maximum number of streams that could be blocked\n");
 
 static PyTypeObject DecoderType = {
     PyVarObject_HEAD_INIT(NULL, 0)
@@ -285,7 +314,7 @@ static PyTypeObject DecoderType = {
     0,                                  /* tp_setattro */
     0,                                  /* tp_as_buffer */
     Py_TPFLAGS_DEFAULT,                 /* tp_flags */
-    "QPACK decoder",                    /* tp_doc */
+    Decoder__doc__,                     /* tp_doc */
     0,                                  /* tp_traverse */
     0,                                  /* tp_clear */
     0,                                  /* tp_richcompare */
@@ -347,16 +376,23 @@ Encoder_apply_settings(EncoderObject *self, PyObject *args, PyObject *kwargs)
     return PyBytes_FromStringAndSize((const char*)tsu_buf, tsu_len);
 }
 
+PyDoc_STRVAR(Encoder_apply_settings__doc__,
+    "apply_settings(max_table_capacity: int, blocked_streams: int) -> bytes\n\n"
+    "Apply the settings received from the encoder.\n\n"
+    ":param max_table_capacity: the maximum size in bytes of the dynamic table\n"
+    ":param blocked_streams: the maximum number of streams that could be blocked\n");
+
 static PyObject*
-Encoder_encode(EncoderObject *self, PyObject *args)
+Encoder_encode(EncoderObject *self, PyObject *args, PyObject *kwargs)
 {
+    char *kwlist[] = {"stream_id", "seqno", "headers", NULL};
     uint64_t stream_id;
-    unsigned seqno;
+    unsigned seqno = 0;
     PyObject *list, *tuple, *name, *value;
     size_t enc_len, hdr_len, pfx_len;
     size_t enc_off = 0, hdr_off = PREFIX_MAX_SIZE, pfx_off = 0;
 
-    if (!PyArg_ParseTuple(args, "KIO", &stream_id, &seqno, &list))
+    if (!PyArg_ParseTupleAndKeywords(args, kwargs, "KIO", kwlist, &stream_id, &seqno, &list))
         return NULL;
 
     if (!PyList_Check(list)) {
@@ -412,13 +448,23 @@ Encoder_encode(EncoderObject *self, PyObject *args)
     );
 }
 
+PyDoc_STRVAR(Encoder_encode__doc__,
+    "encode(stream_id: int, seqno: int, headers: List[Tuple[bytes, bytes]]) -> Tuple[bytes, bytes]\n\n"
+    "Encode a list of headers.\n\n"
+    "A tuple is returned containing two bytestrings: the encoder stream data "
+    " and the encoded header block.\n\n"
+    "If the data cannot be processed, :class:`DecoderStreamError` is raised.\n\n"
+    ":param stream_id: the stream ID\n"
+    ":param headers: a list of header tuples\n");
+
 static PyObject*
-Encoder_feed_decoder(EncoderObject *self, PyObject *args)
+Encoder_feed_decoder(EncoderObject *self, PyObject *args, PyObject *kwargs)
 {
+    char *kwlist[] = {"data", NULL};
     const unsigned char *data;
     Py_ssize_t data_len;
 
-    if (!PyArg_ParseTuple(args, "y#", &data, &data_len))
+    if (!PyArg_ParseTupleAndKeywords(args, kwargs, "y#", kwlist, &data, &data_len))
         return NULL;
 
     if (lsqpack_enc_decoder_in(&self->enc, data, data_len) < 0) {
@@ -429,12 +475,21 @@ Encoder_feed_decoder(EncoderObject *self, PyObject *args)
     Py_RETURN_NONE;
 }
 
+PyDoc_STRVAR(Encoder_feed_decoder__doc__,
+    "feed_decoder(data: bytes) -> None\n\n"
+    "Feed data from the decoder stream.\n\n"
+    ":param data: the encoder stream data\n");
+
 static PyMethodDef Encoder_methods[] = {
-    {"apply_settings", (PyCFunction)Encoder_apply_settings, METH_VARARGS | METH_KEYWORDS, "Apply the settings received from the encoder."},
-    {"encode", (PyCFunction)Encoder_encode, METH_VARARGS, "Encode a list of headers."},
-    {"feed_decoder", (PyCFunction)Encoder_feed_decoder, METH_VARARGS, "Feed data from the decoder stream."},
+    {"apply_settings", (PyCFunction)Encoder_apply_settings, METH_VARARGS | METH_KEYWORDS, Encoder_apply_settings__doc__},
+    {"encode", (PyCFunction)Encoder_encode, METH_VARARGS | METH_KEYWORDS, Encoder_encode__doc__},
+    {"feed_decoder", (PyCFunction)Encoder_feed_decoder, METH_VARARGS | METH_KEYWORDS, Encoder_feed_decoder__doc__},
     {NULL}
 };
+
+PyDoc_STRVAR(Encoder__doc__,
+    "Encoder()\n\n"
+    "QPACK encoder.\n");
 
 static PyTypeObject EncoderType = {
     PyVarObject_HEAD_INIT(NULL, 0)
@@ -457,7 +512,7 @@ static PyTypeObject EncoderType = {
     0,                                  /* tp_setattro */
     0,                                  /* tp_as_buffer */
     Py_TPFLAGS_DEFAULT,                 /* tp_flags */
-    "QPACK encoder",                    /* tp_doc */
+    Encoder__doc__,                     /* tp_doc */
     0,                                  /* tp_traverse */
     0,                                  /* tp_clear */
     0,                                  /* tp_richcompare */
