@@ -453,7 +453,6 @@ PyDoc_STRVAR(Encoder_encode__doc__,
     "Encode a list of headers.\n\n"
     "A tuple is returned containing two bytestrings: the encoder stream data "
     " and the encoded header block.\n\n"
-    "If the data cannot be processed, :class:`DecoderStreamError` is raised.\n\n"
     ":param stream_id: the stream ID\n"
     ":param headers: a list of header tuples\n");
 
@@ -478,7 +477,8 @@ Encoder_feed_decoder(EncoderObject *self, PyObject *args, PyObject *kwargs)
 PyDoc_STRVAR(Encoder_feed_decoder__doc__,
     "feed_decoder(data: bytes) -> None\n\n"
     "Feed data from the decoder stream.\n\n"
-    ":param data: the encoder stream data\n");
+    "If the data cannot be processed, :class:`DecoderStreamError` is raised.\n\n"
+    ":param data: the decoder stream data\n");
 
 static PyMethodDef Encoder_methods[] = {
     {"apply_settings", (PyCFunction)Encoder_apply_settings, METH_VARARGS | METH_KEYWORDS, Encoder_apply_settings__doc__},
