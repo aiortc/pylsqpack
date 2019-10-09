@@ -385,14 +385,14 @@ PyDoc_STRVAR(Encoder_apply_settings__doc__,
 static PyObject*
 Encoder_encode(EncoderObject *self, PyObject *args, PyObject *kwargs)
 {
-    char *kwlist[] = {"stream_id", "seqno", "headers", NULL};
+    char *kwlist[] = {"stream_id", "headers", NULL};
     uint64_t stream_id;
     unsigned seqno = 0;
     PyObject *list, *tuple, *name, *value;
     size_t enc_len, hdr_len, pfx_len;
     size_t enc_off = 0, hdr_off = PREFIX_MAX_SIZE, pfx_off = 0;
 
-    if (!PyArg_ParseTupleAndKeywords(args, kwargs, "KIO", kwlist, &stream_id, &seqno, &list))
+    if (!PyArg_ParseTupleAndKeywords(args, kwargs, "KO", kwlist, &stream_id, &list))
         return NULL;
 
     if (!PyList_Check(list)) {
@@ -449,7 +449,7 @@ Encoder_encode(EncoderObject *self, PyObject *args, PyObject *kwargs)
 }
 
 PyDoc_STRVAR(Encoder_encode__doc__,
-    "encode(stream_id: int, seqno: int, headers: List[Tuple[bytes, bytes]]) -> Tuple[bytes, bytes]\n\n"
+    "encode(stream_id: int, headers: List[Tuple[bytes, bytes]]) -> Tuple[bytes, bytes]\n\n"
     "Encode a list of headers.\n\n"
     "A tuple is returned containing two bytestrings: the encoder stream data "
     " and the encoded header block.\n\n"
