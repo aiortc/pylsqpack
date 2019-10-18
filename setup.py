@@ -1,11 +1,19 @@
 import os.path
 
 import setuptools
+import sys
 
 root_dir = os.path.abspath(os.path.dirname(__file__))
 readme_file = os.path.join(root_dir, 'README.rst')
 with open(readme_file, encoding='utf-8') as f:
     long_description = f.read()
+
+include_dirs = [
+    'vendor/ls-qpack',
+    'vendor/ls-qpack/deps/xxhash',
+]
+if sys.platform.startswith('win'):
+    include_dirs.append('vendor/ls-qpack/wincompat')
 
 setuptools.setup(
     name='pylsqpack',
@@ -33,10 +41,7 @@ setuptools.setup(
     ext_modules=[
         setuptools.Extension(
             'pylsqpack',
-            include_dirs=[
-                'vendor/ls-qpack',
-                'vendor/ls-qpack/deps/xxhash/',
-            ],
+            include_dirs=include_dirs,
             sources=[
                 'src/module.c',
                 'vendor/ls-qpack/lsqpack.c',
