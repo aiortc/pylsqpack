@@ -4,8 +4,8 @@ set -e
 
 if [ "$BUILD" = "lint" ]; then
     flake8 tests
-    isort -c -df -rc tests
-    black --check --diff tests
+    isort -c -df -rc src tests
+    black --check --diff src tests
 elif [ "$BUILD" = "sdist" ]; then
     python3 setup.py sdist
     if [ -n "$TRAVIS_TAG" ]; then

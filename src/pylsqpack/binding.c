@@ -3,7 +3,7 @@
 #include <Python.h>
 #include "lsqpack.h"
 
-#define MODULE_NAME "pylsqpack"
+#define MODULE_NAME "pylsqpack._binding"
 
 #define DEC_BUF_SZ 4096
 #define ENC_BUF_SZ 4096
@@ -546,7 +546,7 @@ static struct PyModuleDef moduledef = {
 };
 
 PyMODINIT_FUNC
-PyInit_pylsqpack(void)
+PyInit__binding(void)
 {
     PyObject* m;
 

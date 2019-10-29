@@ -1,6 +1,6 @@
 include LICENSE
+include pylsqpack/py.typed
 recursive-include docs *.py *.rst Makefile
-recursive-include src *.c
 recursive-include tests *.py
 recursive-include vendor/ls-qpack *
 exclude vendor/ls-qpack/.git

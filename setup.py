@@ -1,4 +1,5 @@
 import os.path
+import sys
 
 import setuptools
 
@@ -30,12 +31,21 @@ setuptools.setup(
         "Programming Language :: Python :: 3.8",
         "Topic :: Internet :: WWW/HTTP",
     ],
+    package_dir = {"": "src"},
+    package_data={"pylsqpack": ["py.typed"]},
+    packages=["pylsqpack"],
+    data_files=[
+        (
+            "shared/typehints/python{}.{}/pylsqpack".format(*sys.version_info[:2]),
+            ["src/pylsqpack/__init__.pyi"],
+        )
+    ],
     ext_modules=[
         setuptools.Extension(
-            "pylsqpack",
+            "pylsqpack._binding",
             include_dirs=["vendor/ls-qpack", "vendor/ls-qpack/deps/xxhash/",],
             sources=[
-                "src/module.c",
+                "src/pylsqpack/binding.c",
                 "vendor/ls-qpack/lsqpack.c",
                 "vendor/ls-qpack/deps/xxhash/xxhash.c",
             ],
