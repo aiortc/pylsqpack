@@ -24,6 +24,10 @@ matrix:
   - env: BUILD=wheel
     install: pip install cibuildwheel twine
     services: docker
+  - env: BUILD=wheel
+    install: pip install cibuildwheel twine
+    language: generic
+    os: osx
 python: "3.7"
 script: .travis/script
 sudo: true
