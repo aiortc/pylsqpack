@@ -39,14 +39,8 @@ setuptools.setup(
         "Topic :: Internet :: WWW/HTTP",
     ],
     package_dir={"": "src"},
-    package_data={"pylsqpack": ["py.typed"]},
+    package_data={"pylsqpack": ["py.typed", "__init__.pyi"]},
     packages=["pylsqpack"],
-    data_files=[
-        (
-            "shared/typehints/python{}.{}/pylsqpack".format(*sys.version_info[:2]),
-            ["src/pylsqpack/__init__.pyi"],
-        )
-    ],
     ext_modules=[
         setuptools.Extension(
             "pylsqpack._binding",
