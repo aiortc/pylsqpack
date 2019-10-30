@@ -1,5 +1,6 @@
+include LICENSE
+recursive-include docs *.py *.rst Makefile
 recursive-include src *.c
 recursive-include tests *.py
 recursive-include vendor/ls-qpack *
 recursive-exclude vendor/ls-qpack/.git *
-include LICENSE README.rst
