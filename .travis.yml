@@ -1,4 +1,9 @@
 dist: xenial
+env:
+  global:
+    - CIBW_ENVIRONMENT="CFLAGS=-std=c99"
+    - CIBW_SKIP="cp27-* cp33-* cp34-*"
+    - CIBW_TEST_COMMAND="python3 -m unittest discover -s {project}/tests"
 language: python
 matrix:
   include:
@@ -16,6 +21,9 @@ matrix:
     python: "pypy3"
   - env: BUILD=sdist
     install: pip install twine
+  - env: BUILD=wheel
+    install: pip install cibuildwheel twine
+    services: docker
 python: "3.7"
 script: .travis/script
 sudo: true
