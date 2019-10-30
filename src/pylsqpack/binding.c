@@ -188,7 +188,7 @@ Decoder_feed_header(DecoderObject *self, PyObject *args, PyObject *kwargs)
         PyErr_Format(StreamBlocked, "stream %d is blocked", stream_id);
         return NULL;
     } else if (status != LQRHS_DONE) {
-        PyErr_Format(DecompressionFailed, "lsqpack_dec_header_in for stream %d failed (%d)", stream_id, status);
+        PyErr_Format(DecompressionFailed, "lsqpack_dec_header_in for stream %d failed", stream_id);
         header_block_free(hblock);
         return NULL;
     }

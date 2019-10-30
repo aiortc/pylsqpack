@@ -8,6 +8,13 @@ readme_file = os.path.join(root_dir, "README.rst")
 with open(readme_file, encoding="utf-8") as f:
     long_description = f.read()
 
+include_dirs = [
+    os.path.join("vendor", "ls-qpack"),
+    os.path.join("vendor", "ls-qpack", "deps", "xxhash"),
+]
+if sys.platform == "win32":
+    include_dirs.append(os.path.join("vendor", "ls-qpack", "wincompat"))
+
 setuptools.setup(
     name="pylsqpack",
     version="0.3.2",
@@ -31,7 +38,7 @@ setuptools.setup(
         "Programming Language :: Python :: 3.8",
         "Topic :: Internet :: WWW/HTTP",
     ],
-    package_dir = {"": "src"},
+    package_dir={"": "src"},
     package_data={"pylsqpack": ["py.typed"]},
     packages=["pylsqpack"],
     data_files=[
@@ -43,7 +50,7 @@ setuptools.setup(
     ext_modules=[
         setuptools.Extension(
             "pylsqpack._binding",
-            include_dirs=["vendor/ls-qpack", "vendor/ls-qpack/deps/xxhash/",],
+            include_dirs=include_dirs,
             sources=[
                 "src/pylsqpack/binding.c",
                 "vendor/ls-qpack/lsqpack.c",

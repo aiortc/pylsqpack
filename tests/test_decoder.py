@@ -68,18 +68,14 @@ class DecoderTest(TestCase):
 
         with self.assertRaises(DecompressionFailed) as cm:
             decoder.feed_header(0, b"")
-        self.assertEqual(
-            str(cm.exception), "lsqpack_dec_header_in for stream 0 failed (3)"
-        )
+        self.assertEqual(str(cm.exception), "lsqpack_dec_header_in for stream 0 failed")
 
     def test_decompression_failed_invalid(self):
         decoder = Decoder(0x100, 0x10)
 
         with self.assertRaises(DecompressionFailed) as cm:
             decoder.feed_header(0, b"123")
-        self.assertEqual(
-            str(cm.exception), "lsqpack_dec_header_in for stream 0 failed (3)"
-        )
+        self.assertEqual(str(cm.exception), "lsqpack_dec_header_in for stream 0 failed")
 
     def test_encoder_stream_error(self):
         decoder = Decoder(0x100, 0x10)
