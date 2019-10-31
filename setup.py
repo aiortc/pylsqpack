@@ -17,7 +17,7 @@ if sys.platform == "win32":
 
 setuptools.setup(
     name="pylsqpack",
-    version="0.3.3",
+    version="0.3.4",
     description="Python wrapper for the ls-qpack QPACK library",
     long_description=long_description,
     url="https://github.com/aiortc/pylsqpack",
