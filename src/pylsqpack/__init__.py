@@ -6,3 +6,4 @@ from ._binding import (
     EncoderStreamError,
     StreamBlocked,
 )
+from .about import __version__
