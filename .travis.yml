@@ -6,18 +6,6 @@ env:
 language: python
 matrix:
   include:
-  - env: BUILD=lint
-    install: pip install black flake8 isort
-  - env: BUILD=test
-    python: "3.8"
-  - env: BUILD=test
-    python: "3.7"
-  - env: BUILD=test
-    python: "3.6"
-  - env: BUILD=test
-    python: "3.5"
-  - env: BUILD=test
-    python: "pypy3"
   - env: BUILD=sdist
     install: pip install twine
   - env: BUILD=wheel
