@@ -1,0 +1,39 @@
+name: tests
+
+on: [push, pull_request]
+
+jobs:
+
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v1
+      - uses: actions/setup-python@v1
+        with:
+          python-version: 3.6
+      - name: Install packages
+        run: pip install black flake8 isort
+      - name: Run linters
+        run: |
+          flake8 src tests
+          isort -c -df -rc src tests
+          black --check --diff src tests
+
+  test:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+        python: [3.8, 3.7, 3.6, pypy3]
+    steps:
+      - uses: actions/checkout@v1
+        with:
+          submodules: true
+      - uses: actions/setup-python@v1
+        with:
+          python-version: ${{ matrix.python }}
+      - name: Run tests
+        run: |
+          pip install -U pip setuptools wheel
+          pip install .
+          python -m unittest discover -v
