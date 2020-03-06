@@ -1,7 +1,6 @@
 dist: xenial
 env:
   global:
-    - CIBW_ENVIRONMENT="CFLAGS=-std=c99"
     - CIBW_SKIP="cp27-* cp33-* cp34-*"
     - CIBW_TEST_COMMAND="python3 -m unittest discover -s {project}/tests"
 language: python
