@@ -8,6 +8,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v1
+        with:
+          submodules: true
       - uses: actions/setup-python@v1
         with:
           python-version: 3.6
@@ -38,9 +40,8 @@ jobs:
           pip install .
           python -m unittest discover -v
 
-  package:
+  package-source:
     runs-on: ubuntu-latest
-    needs: [lint, test]
     steps:
       - uses: actions/checkout@v1
         with:
@@ -48,18 +49,16 @@ jobs:
       - uses: actions/setup-python@v1
         with:
           python-version: 3.7
-      - name: Build package
+      - name: Build source package
         run: python setup.py sdist
-      - name: Publish package
-        if: github.event_name == 'push' && startsWith(github.event.ref, 'refs/tags/')
-        uses: pypa/gh-action-pypi-publish@master
+      - name: Upload source package
+        uses: actions/upload-artifact@v1
         with:
-          user: __token__
-          password: ${{ secrets.PYPI_TOKEN }}
+          name: "dist-source"
+          path: dist/
 
-  wheel:
+  package-wheel:
     runs-on: ${{ matrix.os }}
-    needs: [lint, test]
     strategy:
       matrix:
         os: [ubuntu-latest, macos-latest]
@@ -78,7 +77,32 @@ jobs:
         run: |
           pip install cibuildwheel
           cibuildwheel --output-dir dist
-      - name: Publish wheels
+      - name: Upload wheels
+        uses: actions/upload-artifact@v1
+        with:
+          name: "dist-${{ matrix.os }}"
+          path: dist/
+
+  publish:
+    runs-on: ubuntu-latest
+    needs: [lint, test, package-source, package-wheel]
+    steps:
+      - uses: actions/checkout@v1
+        with:
+          submodules: true
+      - uses: actions/download-artifact@v1
+        with:
+          name: dist-source
+          path: dist/
+      - uses: actions/download-artifact@v1
+        with:
+          name: dist-macos-latest
+          path: dist/
+      - uses: actions/download-artifact@v1
+        with:
+          name: dist-ubuntu-latest
+          path: dist/
+      - name: Publish to PyPI
         if: github.event_name == 'push' && startsWith(github.event.ref, 'refs/tags/')
         uses: pypa/gh-action-pypi-publish@master
         with:
