@@ -34,7 +34,7 @@ setuptools.setup(
     author_email=about["__email__"],
     license=about["__license__"],
     classifiers=[
-        "Development Status :: 4 - Beta",
+        "Development Status :: 5 - Production/Stable",
         "Environment :: Web Environment",
         "Intended Audience :: Developers",
         "License :: OSI Approved :: BSD License",
