@@ -72,7 +72,7 @@ jobs:
       - name: Build wheels
         env:
           CI: true
-          CIBW_SKIP: cp27-* cp33-* cp34-*
+          CIBW_SKIP: cp27-* cp33-* cp34-* pp27-*
           CIBW_TEST_COMMAND: python -m unittest discover -s {project}/tests
         run: |
           pip install cibuildwheel
