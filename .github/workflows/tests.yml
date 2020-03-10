@@ -104,6 +104,10 @@ jobs:
         with:
           name: dist-ubuntu-latest
           path: dist/
+      - uses: actions/download-artifact@v1
+        with:
+          name: dist-windows-latest
+          path: dist/
       - name: Publish to PyPI
         if: github.event_name == 'push' && startsWith(github.event.ref, 'refs/tags/')
         uses: pypa/gh-action-pypi-publish@master
