@@ -55,7 +55,7 @@ jobs:
       - name: Upload source package
         uses: actions/upload-artifact@v1
         with:
-          name: "dist-source"
+          name: dist
           path: dist/
 
   package-wheel:
@@ -72,7 +72,6 @@ jobs:
           python-version: 3.7
       - name: Build wheels
         env:
-          CI: true
           CIBW_SKIP: cp27-* cp33-* cp34-* pp27-*
           CIBW_TEST_COMMAND: python -m unittest discover -s {project}/tests
         shell: bash
@@ -82,7 +81,7 @@ jobs:
       - name: Upload wheels
         uses: actions/upload-artifact@v1
         with:
-          name: "dist-${{ matrix.os }}"
+          name: dist
           path: dist/
 
   publish:
@@ -94,19 +93,7 @@ jobs:
           submodules: true
       - uses: actions/download-artifact@v1
         with:
-          name: dist-source
-          path: dist/
-      - uses: actions/download-artifact@v1
-        with:
-          name: dist-macos-latest
-          path: dist/
-      - uses: actions/download-artifact@v1
-        with:
-          name: dist-ubuntu-latest
-          path: dist/
-      - uses: actions/download-artifact@v1
-        with:
-          name: dist-windows-latest
+          name: dist
           path: dist/
       - name: Publish to PyPI
         if: github.event_name == 'push' && startsWith(github.event.ref, 'refs/tags/')
