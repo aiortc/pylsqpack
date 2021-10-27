@@ -1,0 +1,6 @@
+[tool.cibuildwheel]
+skip = ["cp36-*", "pp36-*", "*-musllinux*"]
+test-command = "python -m unittest discover -s {project}/tests"
+
+[tool.cibuildwheel.linux]
+archs = ["auto", "aarch64"]
