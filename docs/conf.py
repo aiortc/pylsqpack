@@ -49,7 +49,7 @@ master_doc = 'index'
 
 # General information about the project.
 project = 'pylsqpack'
-copyright = u'2019-2020, Jeremy Lainé'
+copyright = u'2019-2021, Jeremy Lainé'
 author = u'Jeremy Lainé'
 
 # The version info for the project you're documenting, acts as replacement for
