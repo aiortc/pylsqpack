@@ -1,5 +1,6 @@
 #define PY_SSIZE_T_CLEAN
 
+#include <stdlib.h>
 #include <Python.h>
 #include "lsqpack.h"
 
@@ -78,7 +79,7 @@ static void header_unblocked(void *opaque) {
 typedef struct {
     PyObject_HEAD
     struct lsqpack_dec dec;
-    unsigned char dec_buf[DEC_BUF_SZ];
+    unsigned char *dec_buf;
     STAILQ_HEAD(, header_block) pending_blocks;
 } DecoderObject;
 
@@ -93,6 +94,8 @@ Decoder_init(DecoderObject *self, PyObject *args, PyObject *kwargs)
     lsqpack_dec_init(&self->dec, NULL, max_table_capacity, blocked_streams, header_unblocked);
 
     STAILQ_INIT(&self->pending_blocks);
+
+    self->dec_buf = malloc(DEC_BUF_SZ);
 
     return 0;
 }
@@ -109,6 +112,8 @@ Decoder_dealloc(DecoderObject *self)
         STAILQ_REMOVE_HEAD(&self->pending_blocks, entries);
         header_block_free(hblock);
     }
+
+    free(self->dec_buf);
 }
 
 static PyObject*
@@ -338,15 +343,20 @@ static PyTypeObject DecoderType = {
 typedef struct {
     PyObject_HEAD
     struct lsqpack_enc enc;
-    unsigned char hdr_buf[HDR_BUF_SZ];
-    unsigned char enc_buf[ENC_BUF_SZ];
-    unsigned char pfx_buf[PREFIX_MAX_SIZE];
+    unsigned char *hdr_buf;
+    unsigned char *enc_buf;
+    unsigned char *pfx_buf;
 } EncoderObject;
 
 static int
 Encoder_init(EncoderObject *self, PyObject *args, PyObject *kwargs)
 {
     lsqpack_enc_preinit(&self->enc, NULL);
+
+    self->hdr_buf = malloc(HDR_BUF_SZ);
+    self->enc_buf = malloc(ENC_BUF_SZ);
+    self->pfx_buf = malloc(PREFIX_MAX_SIZE);
+
     return 0;
 }
 
@@ -354,6 +364,10 @@ static void
 Encoder_dealloc(EncoderObject *self)
 {
     lsqpack_enc_cleanup(&self->enc);
+
+    free(self->hdr_buf);
+    free(self->enc_buf);
+    free(self->pfx_buf);
 }
 
 static PyObject*
