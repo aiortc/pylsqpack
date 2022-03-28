@@ -109,6 +109,8 @@ Decoder_dealloc(DecoderObject *self)
         STAILQ_REMOVE_HEAD(&self->pending_blocks, entries);
         header_block_free(hblock);
     }
+    
+    Py_TYPE(self)->tp_free((PyObject *) self);
 }
 
 static PyObject*
@@ -354,6 +356,7 @@ static void
 Encoder_dealloc(EncoderObject *self)
 {
     lsqpack_enc_cleanup(&self->enc);
+    Py_TYPE(self)->tp_free((PyObject *) self);
 }
 
 static PyObject*
