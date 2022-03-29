@@ -109,7 +109,7 @@ Decoder_dealloc(DecoderObject *self)
         STAILQ_REMOVE_HEAD(&self->pending_blocks, entries);
         header_block_free(hblock);
     }
-    
+
     Py_TYPE(self)->tp_free((PyObject *) self);
 }
 
@@ -135,6 +135,7 @@ Decoder_feed_encoder(DecoderObject *self, PyObject *args, PyObject *kwargs)
         if (!hblock->blocked) {
             value = PyLong_FromUnsignedLongLong(hblock->stream_id);
             PyList_Append(list, value);
+            Py_DECREF(value);
         }
     }
     return list;
@@ -155,7 +156,7 @@ Decoder_feed_header(DecoderObject *self, PyObject *args, PyObject *kwargs)
     uint64_t stream_id;
     const unsigned char *data;
     Py_ssize_t data_len;
-    PyObject *list;
+    PyObject *control, *headers, *tuple;
     size_t dec_len = DEC_BUF_SZ;
     enum lsqpack_read_header_status status;
     struct header_block *hblock;
@@ -195,14 +196,15 @@ Decoder_feed_header(DecoderObject *self, PyObject *args, PyObject *kwargs)
         return NULL;
     }
 
-    list = hlist_to_headers(hblock->hlist);
+    control = PyBytes_FromStringAndSize((const char*)self->dec_buf, dec_len);
+    headers = hlist_to_headers(hblock->hlist);
     header_block_free(hblock);
 
-    return PyTuple_Pack(
-        2,
-        PyBytes_FromStringAndSize((const char*)self->dec_buf, dec_len),
-        list
-    );
+    tuple = PyTuple_Pack(2, control, headers);
+    Py_DECREF(control);
+    Py_DECREF(headers);
+
+    return tuple;
 }
 
 PyDoc_STRVAR(Decoder_feed_header__doc__,
@@ -218,7 +220,7 @@ Decoder_resume_header(DecoderObject *self, PyObject *args, PyObject *kwargs)
 {
     char *kwlist[] = {"stream_id", NULL};
     uint64_t stream_id;
-    PyObject *list;
+    PyObject *control, *headers, *tuple;
     size_t dec_len = DEC_BUF_SZ;
     enum lsqpack_read_header_status status;
     struct header_block *hblock;
@@ -264,15 +266,16 @@ Decoder_resume_header(DecoderObject *self, PyObject *args, PyObject *kwargs)
         return NULL;
     }
 
-    list = hlist_to_headers(hblock->hlist);
+    control = PyBytes_FromStringAndSize((const char*)self->dec_buf, dec_len);
+    headers = hlist_to_headers(hblock->hlist);
     STAILQ_REMOVE(&self->pending_blocks, hblock, header_block, entries);
     header_block_free(hblock);
 
-    return PyTuple_Pack(
-        2,
-        PyBytes_FromStringAndSize((const char*)self->dec_buf, dec_len),
-        list
-    );
+    tuple = PyTuple_Pack(2, control, headers);
+    Py_DECREF(control);
+    Py_DECREF(headers);
+
+    return tuple;
 }
 
 PyDoc_STRVAR(Decoder_resume_header__doc__,
@@ -444,11 +447,13 @@ Encoder_encode(EncoderObject *self, PyObject *args, PyObject *kwargs)
     pfx_off = PREFIX_MAX_SIZE - pfx_len;
     memcpy(self->hdr_buf + pfx_off, self->pfx_buf, pfx_len);
 
-    return PyTuple_Pack(
-        2,
-        PyBytes_FromStringAndSize((const char*)self->enc_buf, enc_off),
-        PyBytes_FromStringAndSize((const char*)self->hdr_buf + pfx_off, hdr_off - pfx_off)
-    );
+    name = PyBytes_FromStringAndSize((const char*)self->enc_buf, enc_off);
+    value = PyBytes_FromStringAndSize((const char*)self->hdr_buf + pfx_off, hdr_off - pfx_off);
+    tuple = PyTuple_Pack(2, name, value);
+    Py_DECREF(name);
+    Py_DECREF(value);
+
+    return tuple;
 }
 
 PyDoc_STRVAR(Encoder_encode__doc__,
