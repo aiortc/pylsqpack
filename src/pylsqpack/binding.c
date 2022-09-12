@@ -208,8 +208,8 @@ Decoder_feed_header(DecoderObject *self, PyObject *args, PyObject *kwargs)
 }
 
 PyDoc_STRVAR(Decoder_feed_header__doc__,
-    "feed_header(stream_id: int, data: bytes) -> List[Tuple[bytes, bytes]]\n\n"
-    "Decode a header block and return headers.\n\n"
+    "feed_header(stream_id: int, data: bytes) -> Tuple[bytes, List[Tuple[bytes, bytes]]]\n\n"
+    "Decode a header block and return control data and headers.\n\n"
     "If the stream is blocked, :class:`StreamBlocked` is raised.\n\n"
     "If the data cannot be processed, :class:`DecompressionFailed` is raised.\n\n"
     ":param stream_id: the ID of the stream\n"
@@ -279,8 +279,8 @@ Decoder_resume_header(DecoderObject *self, PyObject *args, PyObject *kwargs)
 }
 
 PyDoc_STRVAR(Decoder_resume_header__doc__,
-    "resume_header(stream_id: int) -> List[Tuple[bytes, bytes]]\n\n"
-    "Continue decoding a header block and return headers.\n\n"
+    "resume_header(stream_id: int) -> Tuple[bytes, List[Tuple[bytes, bytes]]]\n\n"
+    "Continue decoding a header block and return control data and headers.\n\n"
     "This method should be called only when :meth:`feed_encoder` indicates "
     "that a stream has become unblocked\n\n"
     ":param stream_id: the ID of the stream\n");
