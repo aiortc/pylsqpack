@@ -260,7 +260,7 @@ Decoder_resume_header(DecoderObject *self, PyObject *args, PyObject *kwargs)
         PyErr_Format(StreamBlocked, "stream %d is blocked", stream_id);
         return NULL;
     } else if (status != LQRHS_DONE) {
-        PyErr_Format(DecompressionFailed, "lsqpack_dec_header_in for stream %d failed (%d)", stream_id, status);
+        PyErr_Format(DecompressionFailed, "lsqpack_dec_header_read for stream %d failed (%d)", stream_id, status);
         STAILQ_REMOVE(&self->pending_blocks, hblock, header_block, entries);
         header_block_free(hblock);
         return NULL;
