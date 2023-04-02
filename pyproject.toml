@@ -32,6 +32,14 @@ dynamic = ["version"]
 homepage = "https://github.com/aiortc/pylsqpack"
 documentation = "https://pylsqpack.readthedocs.io/"
 
+[tool.ruff]
+select = [
+    "E",  # pycodestyle
+    "F",  # Pyflakes
+    "W",  # pycodestyle
+    "I",  # isort
+]
+
 [tool.setuptools.dynamic]
 version = {attr = "pylsqpack.__version__"}
 
