@@ -1,0 +1,38 @@
+[build-system]
+requires = ["setuptools"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "pylsqpack"
+description = "Python wrapper for the ls-qpack QPACK library"
+readme = "README.rst"
+requires-python = ">=3.7"
+license = { text = "BSD-3-Clause" }
+authors = [
+    { name = "Jeremy Lainé", email = "jeremy.laine@m4x.org" },
+]
+classifiers = [
+    "Development Status :: 5 - Production/Stable",
+    "Environment :: Web Environment",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: BSD License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.7",
+    "Programming Language :: Python :: 3.8",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Topic :: Internet :: WWW/HTTP",
+]
+dynamic = ["version"]
+
+[project.urls]
+homepage = "https://github.com/aiortc/pylsqpack"
+documentation = "https://pylsqpack.readthedocs.io/"
+
+[tool.setuptools.dynamic]
+version = {attr = "pylsqpack.__version__"}
+
+[tool.setuptools.package-data]
+pylsqpack = ["py.typed", "*.pyi"]
