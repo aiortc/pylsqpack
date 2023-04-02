@@ -14,11 +14,10 @@ jobs:
         with:
           python-version: 3.7
       - name: Install packages
-        run: pip install black flake8 isort
+        run: pip install black ruff
       - name: Run linters
         run: |
-          flake8 src tests
-          isort -c -df -rc src tests
+          ruff src tests
           black --check --diff src tests
 
   test:
