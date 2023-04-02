@@ -42,6 +42,3 @@ select = [
 
 [tool.setuptools.dynamic]
 version = {attr = "pylsqpack.__version__"}
-
-[tool.setuptools.package-data]
-pylsqpack = ["py.typed", "*.pyi"]
