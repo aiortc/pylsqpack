@@ -12,7 +12,9 @@
 
 static PyObject *DecompressionFailed;
 static PyObject *DecoderStreamError;
+static PyObject *DecoderType;
 static PyObject *EncoderStreamError;
+static PyObject *EncoderType;
 static PyObject *StreamBlocked;
 
 struct header_block {
@@ -63,7 +65,7 @@ static PyObject *hlist_to_headers(struct lsqpack_header_list *hlist)
         tuple = PyTuple_Pack(2, name, value);
         Py_DECREF(name);
         Py_DECREF(value);
-        PyList_SET_ITEM(list, i, tuple);
+        PyList_SetItem(list, i, tuple);
     }
     return list;
 }
@@ -110,7 +112,10 @@ Decoder_dealloc(DecoderObject *self)
         header_block_free(hblock);
     }
 
-    Py_TYPE(self)->tp_free((PyObject *) self);
+    PyTypeObject *tp = Py_TYPE(self);
+    freefunc free = PyType_GetSlot(tp, Py_tp_free);
+    free(self);
+    Py_DECREF(tp);
 }
 
 static PyObject*
@@ -298,44 +303,21 @@ PyDoc_STRVAR(Decoder__doc__,
     ":param max_table_capacity: the maximum size in bytes of the dynamic table\n"
     ":param blocked_streams: the maximum number of streams that could be blocked\n");
 
-static PyTypeObject DecoderType = {
-    PyVarObject_HEAD_INIT(NULL, 0)
-    MODULE_NAME ".Decoder",             /* tp_name */
-    sizeof(DecoderObject),              /* tp_basicsize */
-    0,                                  /* tp_itemsize */
-    (destructor)Decoder_dealloc,        /* tp_dealloc */
-    0,                                  /* tp_print */
-    0,                                  /* tp_getattr */
-    0,                                  /* tp_setattr */
-    0,                                  /* tp_reserved */
-    0,                                  /* tp_repr */
-    0,                                  /* tp_as_number */
-    0,                                  /* tp_as_sequence */
-    0,                                  /* tp_as_mapping */
-    0,                                  /* tp_hash  */
-    0,                                  /* tp_call */
-    0,                                  /* tp_str */
-    0,                                  /* tp_getattro */
-    0,                                  /* tp_setattro */
-    0,                                  /* tp_as_buffer */
-    Py_TPFLAGS_DEFAULT,                 /* tp_flags */
-    Decoder__doc__,                     /* tp_doc */
-    0,                                  /* tp_traverse */
-    0,                                  /* tp_clear */
-    0,                                  /* tp_richcompare */
-    0,                                  /* tp_weaklistoffset */
-    0,                                  /* tp_iter */
-    0,                                  /* tp_iternext */
-    Decoder_methods,                    /* tp_methods */
-    0,                                  /* tp_members */
-    0,                                  /* tp_getset */
-    0,                                  /* tp_base */
-    0,                                  /* tp_dict */
-    0,                                  /* tp_descr_get */
-    0,                                  /* tp_descr_set */
-    0,                                  /* tp_dictoffset */
-    (initproc)Decoder_init,             /* tp_init */
-    0,                                  /* tp_alloc */
+
+static PyType_Slot DecoderType_slots[] = {
+    {Py_tp_dealloc, Decoder_dealloc},
+    {Py_tp_methods, Decoder_methods},
+    {Py_tp_doc, Decoder__doc__},
+    {Py_tp_init, Decoder_init},
+    {0, 0},
+};
+
+static PyType_Spec DecoderType_spec = {
+    MODULE_NAME ".Decoder",
+    sizeof(DecoderObject),
+    0,
+    Py_TPFLAGS_DEFAULT,
+    DecoderType_slots
 };
 
 // ENCODER
@@ -359,7 +341,11 @@ static void
 Encoder_dealloc(EncoderObject *self)
 {
     lsqpack_enc_cleanup(&self->enc);
-    Py_TYPE(self)->tp_free((PyObject *) self);
+
+    PyTypeObject *tp = Py_TYPE(self);
+    freefunc free = PyType_GetSlot(tp, Py_tp_free);
+    free(self);
+    Py_DECREF(tp);
 }
 
 static PyObject*
@@ -499,44 +485,20 @@ PyDoc_STRVAR(Encoder__doc__,
     "Encoder()\n\n"
     "QPACK encoder.\n");
 
-static PyTypeObject EncoderType = {
-    PyVarObject_HEAD_INIT(NULL, 0)
-    MODULE_NAME ".Encoder",             /* tp_name */
-    sizeof(EncoderObject),              /* tp_basicsize */
-    0,                                  /* tp_itemsize */
-    (destructor)Encoder_dealloc,        /* tp_dealloc */
-    0,                                  /* tp_print */
-    0,                                  /* tp_getattr */
-    0,                                  /* tp_setattr */
-    0,                                  /* tp_reserved */
-    0,                                  /* tp_repr */
-    0,                                  /* tp_as_number */
-    0,                                  /* tp_as_sequence */
-    0,                                  /* tp_as_mapping */
-    0,                                  /* tp_hash  */
-    0,                                  /* tp_call */
-    0,                                  /* tp_str */
-    0,                                  /* tp_getattro */
-    0,                                  /* tp_setattro */
-    0,                                  /* tp_as_buffer */
-    Py_TPFLAGS_DEFAULT,                 /* tp_flags */
-    Encoder__doc__,                     /* tp_doc */
-    0,                                  /* tp_traverse */
-    0,                                  /* tp_clear */
-    0,                                  /* tp_richcompare */
-    0,                                  /* tp_weaklistoffset */
-    0,                                  /* tp_iter */
-    0,                                  /* tp_iternext */
-    Encoder_methods,                    /* tp_methods */
-    0,                                  /* tp_members */
-    0,                                  /* tp_getset */
-    0,                                  /* tp_base */
-    0,                                  /* tp_dict */
-    0,                                  /* tp_descr_get */
-    0,                                  /* tp_descr_set */
-    0,                                  /* tp_dictoffset */
-    (initproc)Encoder_init,             /* tp_init */
-    0,                                  /* tp_alloc */
+static PyType_Slot EncoderType_slots[] = {
+    {Py_tp_dealloc, Encoder_dealloc},
+    {Py_tp_methods, Encoder_methods},
+    {Py_tp_doc, Encoder__doc__},
+    {Py_tp_init, Encoder_init},
+    {0, 0},
+};
+
+static PyType_Spec EncoderType_spec = {
+    MODULE_NAME ".Encoder",
+    sizeof(EncoderObject),
+    0,
+    Py_TPFLAGS_DEFAULT,
+    EncoderType_slots
 };
 
 // MODULE
@@ -578,17 +540,15 @@ PyInit__binding(void)
     Py_INCREF(StreamBlocked);
     PyModule_AddObject(m, "StreamBlocked", StreamBlocked);
 
-    DecoderType.tp_new = PyType_GenericNew;
-    if (PyType_Ready(&DecoderType) < 0)
+    DecoderType = PyType_FromSpec(&DecoderType_spec);
+    if (DecoderType == NULL)
         return NULL;
-    Py_INCREF(&DecoderType);
-    PyModule_AddObject(m, "Decoder", (PyObject *)&DecoderType);
+    PyModule_AddObject(m, "Decoder", DecoderType);
 
-    EncoderType.tp_new = PyType_GenericNew;
-    if (PyType_Ready(&EncoderType) < 0)
+    EncoderType = PyType_FromSpec(&EncoderType_spec);
+    if (EncoderType == NULL)
         return NULL;
-    Py_INCREF(&EncoderType);
-    PyModule_AddObject(m, "Encoder", (PyObject *)&EncoderType);
+    PyModule_AddObject(m, "Encoder", EncoderType);
 
     return m;
 }
