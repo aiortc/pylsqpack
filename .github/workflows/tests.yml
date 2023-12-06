@@ -73,6 +73,8 @@ jobs:
             arch: arm64
           - os: macos-latest
             arch: x86_64
+          - os: macos-latest
+            arch: universal2
           - os: ubuntu-latest
             arch: aarch64
           - os: ubuntu-latest
