@@ -2,12 +2,14 @@
 
 #include <Python.h>
 #include "lsqpack.h"
+#include "lsxpack_header.h"
 
 #define MODULE_NAME "pylsqpack._binding"
 
 #define DEC_BUF_SZ 4096
 #define ENC_BUF_SZ 4096
 #define HDR_BUF_SZ 4096
+#define XHDR_BUF_SZ 4096
 #define PREFIX_MAX_SIZE 16
 
 static PyObject *DecompressionFailed;
@@ -24,8 +26,9 @@ struct header_block {
     unsigned char *data;
     size_t data_len;
     const unsigned char *data_ptr;
-    struct lsqpack_header_list *hlist;
+    struct lsxpack_header xhdr;
     uint64_t stream_id;
+    PyObject *headers;
 };
 
 static struct header_block *header_block_new(size_t stream_id, const unsigned char *data, size_t data_len)
@@ -37,6 +40,7 @@ static struct header_block *header_block_new(size_t stream_id, const unsigned ch
     hblock->data_ptr = hblock->data;
     memcpy(hblock->data, data, data_len);
     hblock->stream_id = stream_id;
+    hblock->headers = PyList_New(0);
     return hblock;
 }
 
@@ -45,35 +49,61 @@ static void header_block_free(struct header_block *hblock)
     free(hblock->data);
     hblock->data = 0;
     hblock->data_ptr = 0;
-    if (hblock->hlist) {
-        lsqpack_dec_destroy_header_list(hblock->hlist);
-        hblock->hlist = 0;
-    }
+    free(hblock->xhdr.buf);
+    Py_DECREF(hblock->headers);
     free(hblock);
 }
 
-static PyObject *hlist_to_headers(struct lsqpack_header_list *hlist)
-{
-    PyObject *list, *tuple, *name, *value;
-    struct lsqpack_header *header;
-
-    list = PyList_New(hlist->qhl_count);
-    for (size_t i = 0; i < hlist->qhl_count; ++i) {
-        header = hlist->qhl_headers[i];
-        name = PyBytes_FromStringAndSize(header->qh_name, header->qh_name_len);
-        value = PyBytes_FromStringAndSize(header->qh_value, header->qh_value_len);
-        tuple = PyTuple_Pack(2, name, value);
-        Py_DECREF(name);
-        Py_DECREF(value);
-        PyList_SetItem(list, i, tuple);
-    }
-    return list;
-}
-
-static void header_unblocked(void *opaque) {
+static void header_block_unblocked(void *opaque) {
     struct header_block *hblock = opaque;
     hblock->blocked = 0;
 }
+
+/**
+ * Prepare to decode a header by allocating the requested memory.
+ */
+static struct lsxpack_header *header_block_prepare_decode(void *opaque, struct lsxpack_header *xhdr, size_t space) {
+    struct header_block *hblock = opaque;
+    char *buf;
+
+    if (xhdr) {
+        buf = realloc(xhdr->buf, space);
+        if (!buf) return NULL;
+        xhdr->buf = buf;
+        xhdr->val_len = space;
+    } else {
+        xhdr = &hblock->xhdr;
+        buf = malloc(space);
+        if (!buf) return NULL;
+        lsxpack_header_prepare_decode(xhdr, buf, 0, space);
+    }
+    return xhdr;
+}
+
+/**
+ * Process a decoded header by appending it to the list of headers.
+ */
+static int header_block_process_header(void *opaque, struct lsxpack_header *xhdr) {
+    struct header_block *hblock = opaque;
+    PyObject *tuple, *name, *value;
+
+    name = PyBytes_FromStringAndSize(lsxpack_header_get_name(xhdr), xhdr->name_len);
+    value = PyBytes_FromStringAndSize(lsxpack_header_get_value(xhdr), xhdr->val_len);
+    tuple = PyTuple_Pack(2, name, value);
+    Py_DECREF(name);
+    Py_DECREF(value);
+
+    PyList_Append(hblock->headers, tuple);
+    Py_DECREF(tuple);
+
+    return 0;
+}
+
+static const struct lsqpack_dec_hset_if header_block_if = {
+    .dhi_unblocked = header_block_unblocked,
+    .dhi_prepare_decode = header_block_prepare_decode,
+    .dhi_process_header = header_block_process_header,
+};
 
 // DECODER
 
@@ -92,7 +122,7 @@ Decoder_init(DecoderObject *self, PyObject *args, PyObject *kwargs)
     if (!PyArg_ParseTupleAndKeywords(args, kwargs, "II", kwlist, &max_table_capacity, &blocked_streams))
         return -1;
 
-    lsqpack_dec_init(&self->dec, NULL, max_table_capacity, blocked_streams, header_unblocked);
+    lsqpack_dec_init(&self->dec, NULL, max_table_capacity, blocked_streams, &header_block_if, 0);
 
     STAILQ_INIT(&self->pending_blocks);
 
@@ -169,7 +199,7 @@ Decoder_feed_header(DecoderObject *self, PyObject *args, PyObject *kwargs)
     uint64_t stream_id;
     const unsigned char *data;
     Py_ssize_t data_len;
-    PyObject *control, *headers, *tuple;
+    PyObject *control, *tuple;
     size_t dec_len = DEC_BUF_SZ;
     enum lsqpack_read_header_status status;
     struct header_block *hblock;
@@ -193,7 +223,6 @@ Decoder_feed_header(DecoderObject *self, PyObject *args, PyObject *kwargs)
         hblock->data_len,
         &hblock->data_ptr,
         hblock->data_len,
-        &hblock->hlist,
         self->dec_buf,
         &dec_len
     );
@@ -210,12 +239,10 @@ Decoder_feed_header(DecoderObject *self, PyObject *args, PyObject *kwargs)
     }
 
     control = PyBytes_FromStringAndSize((const char*)self->dec_buf, dec_len);
-    headers = hlist_to_headers(hblock->hlist);
-    header_block_free(hblock);
-
-    tuple = PyTuple_Pack(2, control, headers);
+    tuple = PyTuple_Pack(2, control, hblock->headers);
     Py_DECREF(control);
-    Py_DECREF(headers);
+
+    header_block_free(hblock);
 
     return tuple;
 }
@@ -232,7 +259,7 @@ Decoder_resume_header(DecoderObject *self, PyObject *args, PyObject *kwargs)
 {
     char *kwlist[] = {"stream_id", NULL};
     uint64_t stream_id;
-    PyObject *control, *headers, *tuple;
+    PyObject *control, *tuple;
     size_t dec_len = DEC_BUF_SZ;
     enum lsqpack_read_header_status status;
     struct header_block *hblock;
@@ -261,7 +288,6 @@ Decoder_resume_header(DecoderObject *self, PyObject *args, PyObject *kwargs)
             hblock,
             &hblock->data_ptr,
             hblock->data_len - (hblock->data_ptr - hblock->data),
-            &hblock->hlist,
             self->dec_buf,
             &dec_len
         );
@@ -279,13 +305,11 @@ Decoder_resume_header(DecoderObject *self, PyObject *args, PyObject *kwargs)
     }
 
     control = PyBytes_FromStringAndSize((const char*)self->dec_buf, dec_len);
-    headers = hlist_to_headers(hblock->hlist);
+    tuple = PyTuple_Pack(2, control, hblock->headers);
+    Py_DECREF(control);
+
     STAILQ_REMOVE(&self->pending_blocks, hblock, header_block, entries);
     header_block_free(hblock);
-
-    tuple = PyTuple_Pack(2, control, headers);
-    Py_DECREF(control);
-    Py_DECREF(headers);
 
     return tuple;
 }
@@ -327,6 +351,7 @@ typedef struct {
     unsigned char hdr_buf[HDR_BUF_SZ];
     unsigned char enc_buf[ENC_BUF_SZ];
     unsigned char pfx_buf[PREFIX_MAX_SIZE];
+    char xhdr_buf[XHDR_BUF_SZ];
 } EncoderObject;
 
 static int
@@ -390,6 +415,8 @@ Encoder_encode(EncoderObject *self, PyObject *args, PyObject *kwargs)
     PyObject *list, *tuple, *name, *value;
     size_t enc_len, hdr_len, pfx_len;
     size_t enc_off = 0, hdr_off = PREFIX_MAX_SIZE, pfx_off = 0;
+    struct lsxpack_header xhdr;
+    size_t name_len, value_len;
 
     if (!PyArg_ParseTupleAndKeywords(args, kwargs, "KO", kwlist, &stream_id, &list))
         return NULL;
@@ -416,14 +443,24 @@ Encoder_encode(EncoderObject *self, PyObject *args, PyObject *kwargs)
             PyErr_SetString(PyExc_ValueError, "the header's name and value must be bytes");
             return NULL;
         }
+        name_len = PyBytes_Size(name);
+        value_len = PyBytes_Size(value);
+        if (name_len + value_len > XHDR_BUF_SZ) {
+            PyErr_SetString(PyExc_ValueError, "the header's name and value are too long");
+            return NULL;
+        }
+
+        // Copy the header name and value into the xhdr buffer.
+        memcpy(self->xhdr_buf, PyBytes_AsString(name), name_len);
+        memcpy(self->xhdr_buf + name_len, PyBytes_AsString(value), value_len);
+        lsxpack_header_set_offset2(&xhdr, self->xhdr_buf, 0, name_len, name_len, value_len);
 
         enc_len = ENC_BUF_SZ - enc_off;
         hdr_len = HDR_BUF_SZ - hdr_off;
         if (lsqpack_enc_encode(&self->enc,
                                self->enc_buf + enc_off, &enc_len,
                                self->hdr_buf + hdr_off, &hdr_len,
-                               PyBytes_AsString(name), PyBytes_Size(name),
-                               PyBytes_AsString(value), PyBytes_Size(value),
+                               &xhdr,
                                0) != LQES_OK) {
             PyErr_SetString(PyExc_RuntimeError, "lsqpack_enc_encode failed");
             return NULL;
