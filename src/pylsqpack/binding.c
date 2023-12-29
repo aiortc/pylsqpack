@@ -118,6 +118,14 @@ Decoder_dealloc(DecoderObject *self)
     Py_DECREF(tp);
 }
 
+PyDoc_STRVAR(Decoder_feed_encoder__doc__,
+    "feed_encoder(data: bytes) -> List[int]\n\n"
+    "Feed data from the encoder stream.\n\n"
+    "If processing the data unblocked any streams, their IDs are returned, "
+    "and :meth:`resume_header()` must be called for each stream ID.\n\n"
+    "If the data cannot be processed, :class:`EncoderStreamError` is raised.\n\n"
+    ":param data: the encoder stream data\n");
+
 static PyObject*
 Decoder_feed_encoder(DecoderObject *self, PyObject *args, PyObject *kwargs)
 {
@@ -146,13 +154,13 @@ Decoder_feed_encoder(DecoderObject *self, PyObject *args, PyObject *kwargs)
     return list;
 }
 
-PyDoc_STRVAR(Decoder_feed_encoder__doc__,
-    "feed_encoder(data: bytes) -> List[int]\n\n"
-    "Feed data from the encoder stream.\n\n"
-    "If processing the data unblocked any streams, their IDs are returned, "
-    "and :meth:`resume_header()` must be called for each stream ID.\n\n"
-    "If the data cannot be processed, :class:`EncoderStreamError` is raised.\n\n"
-    ":param data: the encoder stream data\n");
+PyDoc_STRVAR(Decoder_feed_header__doc__,
+    "feed_header(stream_id: int, data: bytes) -> Tuple[bytes, List[Tuple[bytes, bytes]]]\n\n"
+    "Decode a header block and return control data and headers.\n\n"
+    "If the stream is blocked, :class:`StreamBlocked` is raised.\n\n"
+    "If the data cannot be processed, :class:`DecompressionFailed` is raised.\n\n"
+    ":param stream_id: the ID of the stream\n"
+    ":param data: the header block data\n");
 
 static PyObject*
 Decoder_feed_header(DecoderObject *self, PyObject *args, PyObject *kwargs)
@@ -212,13 +220,12 @@ Decoder_feed_header(DecoderObject *self, PyObject *args, PyObject *kwargs)
     return tuple;
 }
 
-PyDoc_STRVAR(Decoder_feed_header__doc__,
-    "feed_header(stream_id: int, data: bytes) -> Tuple[bytes, List[Tuple[bytes, bytes]]]\n\n"
-    "Decode a header block and return control data and headers.\n\n"
-    "If the stream is blocked, :class:`StreamBlocked` is raised.\n\n"
-    "If the data cannot be processed, :class:`DecompressionFailed` is raised.\n\n"
-    ":param stream_id: the ID of the stream\n"
-    ":param data: the header block data\n");
+PyDoc_STRVAR(Decoder_resume_header__doc__,
+    "resume_header(stream_id: int) -> Tuple[bytes, List[Tuple[bytes, bytes]]]\n\n"
+    "Continue decoding a header block and return control data and headers.\n\n"
+    "This method should be called only when :meth:`feed_encoder` indicates "
+    "that a stream has become unblocked\n\n"
+    ":param stream_id: the ID of the stream\n");
 
 static PyObject*
 Decoder_resume_header(DecoderObject *self, PyObject *args, PyObject *kwargs)
@@ -283,13 +290,6 @@ Decoder_resume_header(DecoderObject *self, PyObject *args, PyObject *kwargs)
     return tuple;
 }
 
-PyDoc_STRVAR(Decoder_resume_header__doc__,
-    "resume_header(stream_id: int) -> Tuple[bytes, List[Tuple[bytes, bytes]]]\n\n"
-    "Continue decoding a header block and return control data and headers.\n\n"
-    "This method should be called only when :meth:`feed_encoder` indicates "
-    "that a stream has become unblocked\n\n"
-    ":param stream_id: the ID of the stream\n");
-
 static PyMethodDef Decoder_methods[] = {
     {"feed_encoder", (PyCFunction)Decoder_feed_encoder, METH_VARARGS | METH_KEYWORDS, Decoder_feed_encoder__doc__},
     {"feed_header", (PyCFunction)Decoder_feed_header, METH_VARARGS | METH_KEYWORDS, Decoder_feed_header__doc__},
@@ -303,11 +303,10 @@ PyDoc_STRVAR(Decoder__doc__,
     ":param max_table_capacity: the maximum size in bytes of the dynamic table\n"
     ":param blocked_streams: the maximum number of streams that could be blocked\n");
 
-
 static PyType_Slot DecoderType_slots[] = {
     {Py_tp_dealloc, Decoder_dealloc},
     {Py_tp_methods, Decoder_methods},
-    {Py_tp_doc, Decoder__doc__},
+    {Py_tp_doc, (char *)Decoder__doc__},
     {Py_tp_init, Decoder_init},
     {0, 0},
 };
@@ -348,6 +347,12 @@ Encoder_dealloc(EncoderObject *self)
     Py_DECREF(tp);
 }
 
+PyDoc_STRVAR(Encoder_apply_settings__doc__,
+    "apply_settings(max_table_capacity: int, blocked_streams: int) -> bytes\n\n"
+    "Apply the settings received from the encoder.\n\n"
+    ":param max_table_capacity: the maximum size in bytes of the dynamic table\n"
+    ":param blocked_streams: the maximum number of streams that could be blocked\n");
+
 static PyObject*
 Encoder_apply_settings(EncoderObject *self, PyObject *args, PyObject *kwargs)
 {
@@ -368,11 +373,13 @@ Encoder_apply_settings(EncoderObject *self, PyObject *args, PyObject *kwargs)
     return PyBytes_FromStringAndSize((const char*)tsu_buf, tsu_len);
 }
 
-PyDoc_STRVAR(Encoder_apply_settings__doc__,
-    "apply_settings(max_table_capacity: int, blocked_streams: int) -> bytes\n\n"
-    "Apply the settings received from the encoder.\n\n"
-    ":param max_table_capacity: the maximum size in bytes of the dynamic table\n"
-    ":param blocked_streams: the maximum number of streams that could be blocked\n");
+PyDoc_STRVAR(Encoder_encode__doc__,
+    "encode(stream_id: int, headers: List[Tuple[bytes, bytes]]) -> Tuple[bytes, bytes]\n\n"
+    "Encode a list of headers.\n\n"
+    "A tuple is returned containing two bytestrings: the encoder stream data "
+    " and the encoded header block.\n\n"
+    ":param stream_id: the stream ID\n"
+    ":param headers: a list of header tuples\n");
 
 static PyObject*
 Encoder_encode(EncoderObject *self, PyObject *args, PyObject *kwargs)
@@ -442,13 +449,11 @@ Encoder_encode(EncoderObject *self, PyObject *args, PyObject *kwargs)
     return tuple;
 }
 
-PyDoc_STRVAR(Encoder_encode__doc__,
-    "encode(stream_id: int, headers: List[Tuple[bytes, bytes]]) -> Tuple[bytes, bytes]\n\n"
-    "Encode a list of headers.\n\n"
-    "A tuple is returned containing two bytestrings: the encoder stream data "
-    " and the encoded header block.\n\n"
-    ":param stream_id: the stream ID\n"
-    ":param headers: a list of header tuples\n");
+PyDoc_STRVAR(Encoder_feed_decoder__doc__,
+    "feed_decoder(data: bytes) -> None\n\n"
+    "Feed data from the decoder stream.\n\n"
+    "If the data cannot be processed, :class:`DecoderStreamError` is raised.\n\n"
+    ":param data: the decoder stream data\n");
 
 static PyObject*
 Encoder_feed_decoder(EncoderObject *self, PyObject *args, PyObject *kwargs)
@@ -468,12 +473,6 @@ Encoder_feed_decoder(EncoderObject *self, PyObject *args, PyObject *kwargs)
     Py_RETURN_NONE;
 }
 
-PyDoc_STRVAR(Encoder_feed_decoder__doc__,
-    "feed_decoder(data: bytes) -> None\n\n"
-    "Feed data from the decoder stream.\n\n"
-    "If the data cannot be processed, :class:`DecoderStreamError` is raised.\n\n"
-    ":param data: the decoder stream data\n");
-
 static PyMethodDef Encoder_methods[] = {
     {"apply_settings", (PyCFunction)Encoder_apply_settings, METH_VARARGS | METH_KEYWORDS, Encoder_apply_settings__doc__},
     {"encode", (PyCFunction)Encoder_encode, METH_VARARGS | METH_KEYWORDS, Encoder_encode__doc__},
@@ -488,7 +487,7 @@ PyDoc_STRVAR(Encoder__doc__,
 static PyType_Slot EncoderType_slots[] = {
     {Py_tp_dealloc, Encoder_dealloc},
     {Py_tp_methods, Encoder_methods},
-    {Py_tp_doc, Encoder__doc__},
+    {Py_tp_doc, (char *)Encoder__doc__},
     {Py_tp_init, Encoder_init},
     {0, 0},
 };
