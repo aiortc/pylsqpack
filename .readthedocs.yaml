@@ -10,5 +10,8 @@ python:
     - method: pip
       path: .
 
+sphinx:
+  configuration: docs/conf.py
+
 submodules:
   include: all
