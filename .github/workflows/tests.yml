@@ -12,7 +12,7 @@ jobs:
           submodules: true
       - uses: actions/setup-python@v5
         with:
-          python-version: 3.7
+          python-version: 3.9
       - name: Install packages
         run: pip install ruff
       - name: Run linters
@@ -53,7 +53,7 @@ jobs:
           submodules: true
       - uses: actions/setup-python@v5
         with:
-          python-version: 3.7
+          python-version: 3.9
       - name: Build source package
         run: |
           pip install -U build
@@ -73,7 +73,7 @@ jobs:
             arch: arm64
           - os: macos-latest
             arch: x86_64
-          - os: ubuntu-latest
+          - os: ubuntu-24.04-arm
             arch: aarch64
           - os: ubuntu-latest
             arch: i686
@@ -89,17 +89,12 @@ jobs:
           submodules: true
       - uses: actions/setup-python@v5
         with:
-          python-version: 3.7
-      - name: Set up QEMU
-        if: runner.os == 'Linux'
-        uses: docker/setup-qemu-action@v3
-        with:
-          platforms: all
+          python-version: 3.11
       - name: Build wheels
         shell: bash
         env:
           CIBW_ARCHS: ${{ matrix.arch }}
-          CIBW_SKIP: cp37-* pp37-* *-musllinux*
+          CIBW_SKIP: '*-musllinux* pp**'
           CIBW_TEST_COMMAND: python -m unittest discover -s {project}/tests
         run: |
           pip install cibuildwheel
