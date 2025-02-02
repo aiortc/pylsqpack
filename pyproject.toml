@@ -32,7 +32,7 @@ dynamic = ["version"]
 homepage = "https://github.com/aiortc/pylsqpack"
 documentation = "https://pylsqpack.readthedocs.io/"
 
-[tool.ruff]
+[tool.ruff.lint]
 select = [
     "E",  # pycodestyle
     "F",  # Pyflakes
