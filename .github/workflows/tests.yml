@@ -94,7 +94,7 @@ jobs:
         shell: bash
         env:
           CIBW_ARCHS: ${{ matrix.arch }}
-          CIBW_SKIP: '*-musllinux* pp**'
+          CIBW_SKIP: 'pp**'
           CIBW_TEST_COMMAND: python -m unittest discover -s {project}/tests
         run: |
           pip install cibuildwheel
