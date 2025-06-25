@@ -1,19 +1,10 @@
-import os.path
-import sys
+import os
+from glob import glob
+from subprocess import check_call
 
+import pkgconfig
 import setuptools
 from wheel.bdist_wheel import bdist_wheel
-
-extra_compile_args = []
-include_dirs = [
-    os.path.join("vendor", "ls-qpack"),
-    os.path.join("vendor", "ls-qpack", "deps", "xxhash"),
-]
-if sys.platform == "win32":
-    include_dirs.append(os.path.join("vendor", "ls-qpack", "wincompat"))
-else:
-    extra_compile_args = ["-std=c99"]
-
 
 class bdist_wheel_abi3(bdist_wheel):
     def get_tag(self):
@@ -24,21 +15,28 @@ class bdist_wheel_abi3(bdist_wheel):
 
         return python, abi, plat
 
+ext = setuptools.Extension(
+    "pylsqpack._binding",
+    define_macros=[("Py_LIMITED_API", "0x03080000")],
+    py_limited_api=True,
+    extra_compile_args=[],
+    sources=["src/pylsqpack/binding.c"],
+)
+
+try:
+    pc_found = pkgconfig.exists("lsqpack")
+except EnvironmentError:
+    pc_found = False
+
+if not pc_found:
+    check_call(["vcpkg", "install"])
+    prefix = glob("vcpkg_installed/*-*")[0]
+    os.environ["PKG_CONFIG"] = os.path.join(prefix, "tools/pkgconf/pkgconf")
+    os.environ["PKG_CONFIG_PATH"] = os.path.join(prefix, "lib/pkgconfig")
+
+pkgconfig.configure_extension(ext, "lsqpack", keep_system=("cflags", "libs"))
 
 setuptools.setup(
-    ext_modules=[
-        setuptools.Extension(
-            "pylsqpack._binding",
-            define_macros=[("Py_LIMITED_API", "0x03080000")],
-            extra_compile_args=extra_compile_args,
-            include_dirs=include_dirs,
-            py_limited_api=True,
-            sources=[
-                "src/pylsqpack/binding.c",
-                "vendor/ls-qpack/lsqpack.c",
-                "vendor/ls-qpack/deps/xxhash/xxhash.c",
-            ],
-        ),
-    ],
+    ext_modules=[ext],
     cmdclass={"bdist_wheel": bdist_wheel_abi3},
 )
