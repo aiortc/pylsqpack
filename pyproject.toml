@@ -1,5 +1,5 @@
 [build-system]
-requires = ["setuptools", "wheel"]
+requires = ["pkgconfig @ git+https://github.com/CL-Jeremy/pkgconfig.git@pkgconf-detection-and-features", "setuptools", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]

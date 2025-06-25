@@ -9,6 +9,7 @@
 /build
 /dist
 /docs/_build
+/vcpkg_installed
 
 # Environments
 .env

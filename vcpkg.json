@@ -1,0 +1,13 @@
+{
+  "name": "pylsqpack",
+  "supports": "static",
+  "version-string": "",
+  "dependencies": [
+    "ls-qpack",
+    "pkgconf"
+  ],
+  "builtin-baseline": "f75c836a67777a86a2c1116a28b179827f028b66",
+  "vcpkg-configuration": {
+    "overlay-ports": [ "./vcpkg_ports/pkgconf" ]
+  }
+}
