@@ -23,7 +23,12 @@ ext = setuptools.Extension(
     sources=["src/pylsqpack/binding.c"],
 )
 
-if not pkgconfig.installed("lsqpack", ">= 2.6.2"):
+try:
+    pc_found = pkgconfig.exists("lsqpack")
+except EnvironmentError:
+    pc_found = False
+
+if not pc_found:
     check_call(["vcpkg", "install"])
     prefix = glob("vcpkg_installed/*-*")[0]
     os.environ["PKG_CONFIG"] = os.path.join(prefix, "tools/pkgconf/pkgconf")
