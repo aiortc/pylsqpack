@@ -1,5 +1,7 @@
 #define PY_SSIZE_T_CLEAN
 
+#include <assert.h>
+
 #include <Python.h>
 #include "lsqpack.h"
 #include "lsxpack_header.h"
@@ -71,6 +73,9 @@ static struct lsxpack_header *header_block_prepare_decode(void *opaque, struct l
     hblock->header_buffer = buf;
 
     if (xhdr) {
+        assert(&hblock->xhdr == xhdr);
+        assert(space > xhdr->val_len);
+
         xhdr->buf = buf;
         xhdr->val_len = space;
     } else {
