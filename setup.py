@@ -20,7 +20,7 @@ class bdist_wheel_abi3(bdist_wheel):
         python, abi, plat = super().get_tag()
 
         if python.startswith("cp"):
-            return "cp39", "abi3", plat
+            return "cp310", "abi3", plat
 
         return python, abi, plat
 
@@ -29,7 +29,7 @@ setuptools.setup(
     ext_modules=[
         setuptools.Extension(
             "pylsqpack._binding",
-            define_macros=[("Py_LIMITED_API", "0x03080000")],
+            define_macros=[("Py_LIMITED_API", "0x030A0000")],
             extra_compile_args=extra_compile_args,
             include_dirs=include_dirs,
             py_limited_api=True,
