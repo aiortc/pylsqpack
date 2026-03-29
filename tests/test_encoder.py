@@ -17,6 +17,13 @@ class EncoderTest(TestCase):
             encoder.encode(stream_id, ["hello"])
         self.assertEqual(str(cm.exception), "the header must be a two-tuple")
 
+    def test_encode_name_empty(self):
+        encoder = Encoder()
+        stream_id = 0
+        with self.assertRaises(ValueError) as cm:
+            encoder.encode(stream_id, [(b"", b"bar")])
+        self.assertEqual(str(cm.exception), "the header's name must not be empty")
+
     def test_encode_name_not_bytes(self):
         encoder = Encoder()
         stream_id = 0
