@@ -68,8 +68,17 @@ static void header_block_unblocked(void *opaque) {
  */
 static struct lsxpack_header *header_block_prepare_decode(void *opaque, struct lsxpack_header *xhdr, size_t space) {
     struct header_block *hblock = opaque;
-    char *buf = realloc(hblock->header_buffer, space);
-    if (!buf) return NULL;
+    char *buf;
+
+    // The behaviour of realloc(ptr, 0) is implementation specific,
+    // so if asked for a zero size we explicitly free the memory.
+    if (space) {
+        buf = realloc(hblock->header_buffer, space);
+        if (!buf) return NULL;
+    } else {
+        free(hblock->header_buffer);
+        buf = 0;
+    }
     hblock->header_buffer = buf;
 
     if (xhdr) {
