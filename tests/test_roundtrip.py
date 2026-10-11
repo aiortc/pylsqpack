@@ -29,6 +29,72 @@ class RoundtripTest(TestCase):
         # the decoder no longer reports the stream as unblocked
         self.assertEqual(decoder.feed_encoder(control), [])
 
+    def test_large_headers(self):
+        # Regression test for #57: the encoder used to write the header block
+        # into a fixed 4 kB buffer, and reject any header whose name and value
+        # exceeded 4 kB. Headers such as large cookies made encoding fail.
+        encoder = Encoder()
+        decoder = Decoder(0x100, 0x10)
+        stream_id = 0
+        headers = [
+            (b"cookie", b"a" * 3548),
+            (b"x-custom", b"b" * 1738),
+            (b"x-large", b"c" * 20000),
+        ]
+
+        # encode headers, the header block buffer must grow well beyond 4 kB:
+        # even after Huffman coding the values take 2218 + 1304 + 12500 bytes
+        control, data = encoder.encode(stream_id, headers)
+        self.assertEqual(control, b"")
+        self.assertEqual(len(data), 16048)
+
+        # decode headers
+        decoder.feed_encoder(control)
+        control, decoded = decoder.feed_header(stream_id, data)
+        self.assertEqual(control, b"")
+        self.assertEqual(decoded, headers)
+
+    def test_large_headers_with_settings(self):
+        # Regression test for #57: when the dynamic table is enabled, inserting
+        # a large header produces encoder stream data, which the encoder used
+        # to write into a separate fixed 4 kB buffer.
+        encoder = Encoder()
+        decoder = Decoder(0x4000, 0x10)
+        stream_id = 0
+        headers = [(b"x-large", b"c" * 8000)]
+
+        # apply decoder settings
+        encoder.apply_settings(0x4000, 0x10)
+
+        # ROUND 1
+
+        # encode headers, the header has not been seen before so it is sent as
+        # a literal in the header block, and the encoder stream is empty
+        control, data = encoder.encode(stream_id, headers)
+        self.assertEqual(control, b"")
+        self.assertEqual(len(data), 5012)
+
+        # decode headers
+        decoder.feed_encoder(control)
+        control, decoded = decoder.feed_header(stream_id, data)
+        self.assertEqual(control, b"")
+        self.assertEqual(decoded, headers)
+
+        # ROUND 2
+
+        # encode headers, the header has been seen before so it is inserted
+        # into the dynamic table: the encoder stream buffer must grow beyond
+        # 4 kB, while the header block only holds a reference to the entry
+        control, data = encoder.encode(stream_id, headers)
+        self.assertEqual(len(control), 5010)
+        self.assertEqual(data, b"\x02\x80\x10")
+
+        # decode headers
+        decoder.feed_encoder(control)
+        control, decoded = decoder.feed_header(stream_id, data)
+        self.assertEqual(control, b"\x80")
+        self.assertEqual(decoded, headers)
+
     def test_simple(self):
         encoder = Encoder()
         decoder = Decoder(0x100, 0x10)

@@ -38,9 +38,21 @@ class EncoderTest(TestCase):
             encoder.encode(stream_id, [(b"foo", 1)])
         self.assertEqual(str(cm.exception), "the header's name and value must be bytes")
 
-    def test_encode_too_long(self):
+    def test_encode_name_too_long(self):
         encoder = Encoder()
         stream_id = 0
         with self.assertRaises(ValueError) as cm:
-            encoder.encode(stream_id, [(bytes(4096), bytes(1))])
-        self.assertEqual(str(cm.exception), "the header's name and value are too long")
+            encoder.encode(stream_id, [(bytes(65536), bytes(1))])
+        self.assertEqual(str(cm.exception), "the header's name is too long")
+
+    def test_encode_value_too_long(self):
+        encoder = Encoder()
+        stream_id = 0
+        with self.assertRaises(ValueError) as cm:
+            encoder.encode(stream_id, [(bytes(1), bytes(65536))])
+        self.assertEqual(str(cm.exception), "the header's value is too long")
+
+    def test_encode_max_length(self):
+        encoder = Encoder()
+        stream_id = 0
+        encoder.encode(stream_id, [(bytes(65535), bytes(65535))])
