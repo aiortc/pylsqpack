@@ -21,13 +21,11 @@ pylsqpack
 `Decoder` and `Encoder` objects to read or write HTTP/3 headers compressed
 with QPACK.
 
-.. automodule:: pylsqpack
+.. toctree::
+   :maxdepth: 2
 
-    .. autoclass:: Decoder
-        :members:
-
-    .. autoclass:: Encoder
-        :members:
-
+   api
+   changelog
+   license
 
 .. _ls-qpack: https://github.com/litespeedtech/ls-qpack/
