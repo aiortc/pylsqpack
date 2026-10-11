@@ -2,7 +2,6 @@ import os.path
 import sys
 
 import setuptools
-from wheel.bdist_wheel import bdist_wheel
 
 extra_compile_args = []
 include_dirs = [
@@ -15,21 +14,11 @@ else:
     extra_compile_args = ["-std=c99"]
 
 
-class bdist_wheel_abi3(bdist_wheel):
-    def get_tag(self):
-        python, abi, plat = super().get_tag()
-
-        if python.startswith("cp"):
-            return "cp310", "abi3", plat
-
-        return python, abi, plat
-
-
 setuptools.setup(
     ext_modules=[
         setuptools.Extension(
             "pylsqpack._binding",
-            define_macros=[("Py_LIMITED_API", "0x030A0000")],
+            define_macros=[("Py_LIMITED_API", "0x030B0000")],
             extra_compile_args=extra_compile_args,
             include_dirs=include_dirs,
             py_limited_api=True,
@@ -40,5 +29,5 @@ setuptools.setup(
             ],
         ),
     ],
-    cmdclass={"bdist_wheel": bdist_wheel_abi3},
+    options={"bdist_wheel": {"py_limited_api": "cp311"}},
 )
