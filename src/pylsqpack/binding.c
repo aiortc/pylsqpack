@@ -1,7 +1,7 @@
 #define PY_SSIZE_T_CLEAN
 
 #include <assert.h>
-#include <stdlib.h>
+#include <string.h>
 
 #include <Python.h>
 #include "lsqpack.h"
@@ -42,9 +42,9 @@ struct header_block {
 
 static struct header_block *header_block_new(size_t stream_id, const unsigned char *data, size_t data_len)
 {
-    struct header_block *hblock = malloc(sizeof(struct header_block));
+    struct header_block *hblock = PyMem_Malloc(sizeof(struct header_block));
     memset(hblock, 0, sizeof(*hblock));
-    hblock->data = malloc(data_len);
+    hblock->data = PyMem_Malloc(data_len);
     hblock->data_len = data_len;
     hblock->data_ptr = hblock->data;
     memcpy(hblock->data, data, data_len);
@@ -55,12 +55,12 @@ static struct header_block *header_block_new(size_t stream_id, const unsigned ch
 
 static void header_block_free(struct header_block *hblock)
 {
-    free(hblock->data);
+    PyMem_Free(hblock->data);
     hblock->data = 0;
     hblock->data_ptr = 0;
-    free(hblock->header_buffer);
+    PyMem_Free(hblock->header_buffer);
     Py_DECREF(hblock->headers);
-    free(hblock);
+    PyMem_Free(hblock);
 }
 
 static void header_block_unblocked(void *opaque) {
@@ -75,15 +75,10 @@ static struct lsxpack_header *header_block_prepare_decode(void *opaque, struct l
     struct header_block *hblock = opaque;
     char *buf;
 
-    // The behaviour of realloc(ptr, 0) is implementation specific,
-    // so if asked for a zero size we explicitly free the memory.
-    if (space) {
-        buf = realloc(hblock->header_buffer, space);
-        if (!buf) return NULL;
-    } else {
-        free(hblock->header_buffer);
-        buf = 0;
-    }
+    // Unlike realloc(), PyMem_Realloc() has a defined behaviour for a zero
+    // size: it returns a valid pointer.
+    buf = PyMem_Realloc(hblock->header_buffer, space);
+    if (!buf) return NULL;
     hblock->header_buffer = buf;
 
     if (xhdr) {
