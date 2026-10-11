@@ -95,3 +95,29 @@ class DecoderTest(TestCase):
         with self.assertRaises(EncoderStreamError) as cm:
             decoder.feed_encoder(b"\x00")
         self.assertEqual(str(cm.exception), "lsqpack_dec_enc_in failed")
+
+    def test_reduced_table_capacity(self):
+        """
+        Decoding a header block must succeed when the encoder selected a
+        dynamic table capacity lower than the maximum, and the Required
+        Insert Count exceeds twice the number of entries which fit in the
+        selected capacity.
+
+        See https://github.com/aiortc/pylsqpack/issues/58
+        """
+        decoder = Decoder(8192, 16)
+        stream_id = 0
+
+        # Set Dynamic Table Capacity to 4096, then insert 258 entries.
+        data = binascii.unhexlify("3fe11f")
+        for i in range(258):
+            value = b"%03d" % i
+            data += b"\x41a" + bytes([len(value)]) + value
+        decoder.feed_encoder(data)
+
+        # Required Insert Count = 258, Base = 258, relative indexes 2, 1, 0.
+        control, headers = decoder.feed_header(
+            stream_id, binascii.unhexlify("ff0400828180")
+        )
+        self.assertEqual(control, b"\x80")
+        self.assertEqual(headers, [(b"a", b"255"), (b"a", b"256"), (b"a", b"257")])
