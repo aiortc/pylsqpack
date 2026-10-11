@@ -1,6 +1,7 @@
 #define PY_SSIZE_T_CLEAN
 
 #include <assert.h>
+#include <stdlib.h>
 
 #include <Python.h>
 #include "lsqpack.h"
@@ -156,7 +157,7 @@ Decoder_dealloc(DecoderObject *self)
         header_block_free(hblock);
     }
 
-    PyTypeObject *tp = Py_TYPE(self);
+    PyTypeObject *tp = Py_TYPE((PyObject *)self);
     freefunc free = PyType_GetSlot(tp, Py_tp_free);
     free(self);
     Py_DECREF(tp);
@@ -380,7 +381,7 @@ Encoder_dealloc(EncoderObject *self)
 {
     lsqpack_enc_cleanup(&self->enc);
 
-    PyTypeObject *tp = Py_TYPE(self);
+    PyTypeObject *tp = Py_TYPE((PyObject *)self);
     freefunc free = PyType_GetSlot(tp, Py_tp_free);
     free(self);
     Py_DECREF(tp);
