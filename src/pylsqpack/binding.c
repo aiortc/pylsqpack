@@ -162,6 +162,49 @@ Decoder_dealloc(DecoderObject *self)
     Py_DECREF(tp);
 }
 
+PyDoc_STRVAR(Decoder_cancel_stream__doc__,
+    "cancel_stream(stream_id: int) -> bytes\n\n"
+    "Cancel decoding for a stream and return control data.\n\n"
+    "This method should be called when a stream is reset or abandoned. "
+    "Any pending header block for the stream is discarded.\n\n"
+    ":param stream_id: the ID of the stream\n");
+
+static PyObject*
+Decoder_cancel_stream(DecoderObject *self, PyObject *args, PyObject *kwargs)
+{
+    char *kwlist[] = {"stream_id", NULL};
+    uint64_t stream_id;
+    ssize_t dec_len;
+    struct header_block *hblock;
+    int found = 0;
+
+    if (!PyArg_ParseTupleAndKeywords(args, kwargs, "K", kwlist, &stream_id))
+        return NULL;
+
+    // find the header block for the stream
+    STAILQ_FOREACH(hblock, &self->pending_blocks, entries) {
+        if (hblock->stream_id == stream_id) {
+            found = 1;
+            break;
+        }
+    }
+
+    if (found) {
+        dec_len = lsqpack_dec_cancel_stream(&self->dec, hblock, self->dec_buf, DEC_BUF_SZ);
+        STAILQ_REMOVE(&self->pending_blocks, hblock, header_block, entries);
+        header_block_free(hblock);
+    } else {
+        dec_len = lsqpack_dec_cancel_stream_id(&self->dec, stream_id, self->dec_buf, DEC_BUF_SZ);
+    }
+
+    if (dec_len < 0) {
+        PyErr_Format(PyExc_RuntimeError, "lsqpack_dec_cancel_stream for stream %llu failed", (unsigned long long)stream_id);
+        return NULL;
+    }
+
+    return PyBytes_FromStringAndSize((const char*)self->dec_buf, dec_len);
+}
+
 PyDoc_STRVAR(Decoder_feed_encoder__doc__,
     "feed_encoder(data: bytes) -> List[int]\n\n"
     "Feed data from the encoder stream.\n\n"
@@ -329,6 +372,7 @@ Decoder_resume_header(DecoderObject *self, PyObject *args, PyObject *kwargs)
 }
 
 static PyMethodDef Decoder_methods[] = {
+    {"cancel_stream", (PyCFunction)Decoder_cancel_stream, METH_VARARGS | METH_KEYWORDS, Decoder_cancel_stream__doc__},
     {"feed_encoder", (PyCFunction)Decoder_feed_encoder, METH_VARARGS | METH_KEYWORDS, Decoder_feed_encoder__doc__},
     {"feed_header", (PyCFunction)Decoder_feed_header, METH_VARARGS | METH_KEYWORDS, Decoder_feed_header__doc__},
     {"resume_header", (PyCFunction)Decoder_resume_header, METH_VARARGS | METH_KEYWORDS, Decoder_resume_header__doc__},

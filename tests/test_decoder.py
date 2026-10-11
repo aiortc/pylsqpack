@@ -63,6 +63,59 @@ class DecoderTest(TestCase):
         # free the decoder with pending block
         del decoder
 
+    def test_cancel_stream_blocked(self):
+        decoder = Decoder(0x100, 0x10)
+        stream_id = 0
+
+        # the stream is blocked
+        with self.assertRaises(StreamBlocked):
+            decoder.feed_header(stream_id, binascii.unhexlify("0482d9101112"))
+
+        # cancel the stream
+        self.assertEqual(decoder.cancel_stream(stream_id), b"\x40")
+
+        # the stream is not reported as unblocked
+        self.assertEqual(
+            decoder.feed_encoder(
+                binascii.unhexlify(
+                    "3fe10168f2b14939d69ce84f8d9635e9ef2a12bd454dc69a659f6cf2b14939d6"
+                    "b505b161cc5a9385198fdad313c696dd6d5f4a082a65b6850400bea0837190dc"
+                    "138a62d1bf"
+                )
+            ),
+            [],
+        )
+
+        # the header block is gone
+        with self.assertRaises(ValueError):
+            decoder.resume_header(stream_id)
+
+        # a new header block can be decoded for the stream
+        control, headers = decoder.feed_header(
+            stream_id, binascii.unhexlify("0482d9101112")
+        )
+        self.assertEqual(control, b"\x80")
+        self.assertEqual(len(headers), 4)
+
+        # free the decoder
+        del decoder
+
+    def test_cancel_stream_no_dynamic_table(self):
+        decoder = Decoder(0, 0x10)
+
+        self.assertEqual(decoder.cancel_stream(4), b"")
+
+    def test_cancel_stream_not_blocked(self):
+        decoder = Decoder(0x100, 0x10)
+
+        self.assertEqual(decoder.cancel_stream(4), b"\x44")
+
+        # the largest stream ID needs a 10-byte instruction
+        self.assertEqual(
+            decoder.cancel_stream(2**62 - 1),
+            binascii.unhexlify("7fc0ffffffffffffff3f"),
+        )
+
     def test_decompress_failed_empty_header_name(self):
         """
         Decoding a header with an empty name should fail but not crash.

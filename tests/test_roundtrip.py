@@ -1,9 +1,34 @@
 from unittest import TestCase
 
-from pylsqpack import Decoder, Encoder
+from pylsqpack import Decoder, Encoder, StreamBlocked
 
 
 class RoundtripTest(TestCase):
+    def test_cancel_stream(self):
+        encoder = Encoder()
+        decoder = Decoder(0x100, 0x10)
+        stream_id = 0
+
+        # apply decoder settings
+        encoder.apply_settings(0x100, 0x10)
+
+        # encode headers twice so the second block uses the dynamic table
+        encoder.encode(stream_id, [(b"one", b"foo"), (b"two", b"bar")])
+        control, data = encoder.encode(stream_id, [(b"one", b"foo"), (b"two", b"bar")])
+        self.assertEqual(control, b"b=E\x82\x94\xe7Ctwo\x03bar")
+
+        # the stream is blocked as the encoder stream data was not received
+        with self.assertRaises(StreamBlocked):
+            decoder.feed_header(stream_id, data)
+
+        # cancel the stream, the encoder accepts the instruction
+        cancel = decoder.cancel_stream(stream_id)
+        self.assertEqual(cancel, b"\x40")
+        encoder.feed_decoder(cancel)
+
+        # the decoder no longer reports the stream as unblocked
+        self.assertEqual(decoder.feed_encoder(control), [])
+
     def test_simple(self):
         encoder = Encoder()
         decoder = Decoder(0x100, 0x10)
