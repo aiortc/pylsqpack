@@ -4,6 +4,20 @@ on: [push, pull_request]
 
 jobs:
 
+  docs:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          submodules: true
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+      - name: Build documentation
+        run: |
+          pip install . -r requirements/docs.txt
+          make -C docs html SPHINXOPTS=-W
+
   lint:
     runs-on: ubuntu-latest
     steps:
@@ -14,7 +28,7 @@ jobs:
         with:
           python-version: "3.11"
       - name: Install packages
-        run: pip install check-manifest ruff
+        run: pip install -r requirements/lint.txt
       - name: Run linters
         run: |
           ruff check .
