@@ -4,7 +4,7 @@ from pylsqpack import Decoder, Encoder, StreamBlocked
 
 
 class RoundtripTest(TestCase):
-    def test_cancel_stream(self):
+    def test_cancel_stream(self) -> None:
         encoder = Encoder()
         decoder = Decoder(0x100, 0x10)
         stream_id = 0
@@ -29,7 +29,7 @@ class RoundtripTest(TestCase):
         # the decoder no longer reports the stream as unblocked
         self.assertEqual(decoder.feed_encoder(control), [])
 
-    def test_large_headers(self):
+    def test_large_headers(self) -> None:
         # Regression test for #57: the encoder used to write the header block
         # into a fixed 4 kB buffer, and reject any header whose name and value
         # exceeded 4 kB. Headers such as large cookies made encoding fail.
@@ -54,7 +54,7 @@ class RoundtripTest(TestCase):
         self.assertEqual(control, b"")
         self.assertEqual(decoded, headers)
 
-    def test_large_headers_with_settings(self):
+    def test_large_headers_with_settings(self) -> None:
         # Regression test for #57: when the dynamic table is enabled, inserting
         # a large header produces encoder stream data, which the encoder used
         # to write into a separate fixed 4 kB buffer.
@@ -95,7 +95,7 @@ class RoundtripTest(TestCase):
         self.assertEqual(control, b"\x80")
         self.assertEqual(decoded, headers)
 
-    def test_simple(self):
+    def test_simple(self) -> None:
         encoder = Encoder()
         decoder = Decoder(0x100, 0x10)
         stream_id = 0
@@ -111,7 +111,7 @@ class RoundtripTest(TestCase):
         self.assertEqual(control, b"")
         self.assertEqual(headers, [(b"one", b"foo"), (b"two", b"bar")])
 
-    def test_with_settings(self):
+    def test_with_settings(self) -> None:
         encoder = Encoder()
         decoder = Decoder(0x100, 0x10)
         stream_id = 0
