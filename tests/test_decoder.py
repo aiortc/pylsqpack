@@ -1,11 +1,10 @@
-import binascii
 from unittest import TestCase
 
 from pylsqpack import Decoder, DecompressionFailed, EncoderStreamError, StreamBlocked
 
 
 class DecoderTest(TestCase):
-    def test_blocked_stream(self):
+    def test_blocked_stream(self) -> None:
         decoder = Decoder(0x100, 0x10)
         stream_id = 0
 
@@ -18,7 +17,7 @@ class DecoderTest(TestCase):
 
         # the stream is blocked
         with self.assertRaises(StreamBlocked):
-            decoder.feed_header(stream_id, binascii.unhexlify("0482d9101112"))
+            decoder.feed_header(stream_id, bytes.fromhex("0482d9101112"))
 
         # the stream is still blocked
         with self.assertRaises(StreamBlocked):
@@ -27,7 +26,7 @@ class DecoderTest(TestCase):
         # the stream becomes unblocked
         self.assertEqual(
             decoder.feed_encoder(
-                binascii.unhexlify(
+                bytes.fromhex(
                     "3fe10168f2b14939d69ce84f8d9635e9ef2a12bd454dc69a659f6cf2b14939d6"
                     "b505b161cc5a9385198fdad313c696dd6d5f4a082a65b6850400bea0837190dc"
                     "138a62d1bf"
@@ -52,24 +51,24 @@ class DecoderTest(TestCase):
         # free the decoder
         del decoder
 
-    def test_blocked_stream_free(self):
+    def test_blocked_stream_free(self) -> None:
         decoder = Decoder(0x100, 0x10)
         stream_id = 0
 
         # the stream is blocked
         with self.assertRaises(StreamBlocked):
-            decoder.feed_header(stream_id, binascii.unhexlify("0482d9101112"))
+            decoder.feed_header(stream_id, bytes.fromhex("0482d9101112"))
 
         # free the decoder with pending block
         del decoder
 
-    def test_cancel_stream_blocked(self):
+    def test_cancel_stream_blocked(self) -> None:
         decoder = Decoder(0x100, 0x10)
         stream_id = 0
 
         # the stream is blocked
         with self.assertRaises(StreamBlocked):
-            decoder.feed_header(stream_id, binascii.unhexlify("0482d9101112"))
+            decoder.feed_header(stream_id, bytes.fromhex("0482d9101112"))
 
         # cancel the stream
         self.assertEqual(decoder.cancel_stream(stream_id), b"\x40")
@@ -77,7 +76,7 @@ class DecoderTest(TestCase):
         # the stream is not reported as unblocked
         self.assertEqual(
             decoder.feed_encoder(
-                binascii.unhexlify(
+                bytes.fromhex(
                     "3fe10168f2b14939d69ce84f8d9635e9ef2a12bd454dc69a659f6cf2b14939d6"
                     "b505b161cc5a9385198fdad313c696dd6d5f4a082a65b6850400bea0837190dc"
                     "138a62d1bf"
@@ -91,21 +90,19 @@ class DecoderTest(TestCase):
             decoder.resume_header(stream_id)
 
         # a new header block can be decoded for the stream
-        control, headers = decoder.feed_header(
-            stream_id, binascii.unhexlify("0482d9101112")
-        )
+        control, headers = decoder.feed_header(stream_id, bytes.fromhex("0482d9101112"))
         self.assertEqual(control, b"\x80")
         self.assertEqual(len(headers), 4)
 
         # free the decoder
         del decoder
 
-    def test_cancel_stream_no_dynamic_table(self):
+    def test_cancel_stream_no_dynamic_table(self) -> None:
         decoder = Decoder(0, 0x10)
 
         self.assertEqual(decoder.cancel_stream(4), b"")
 
-    def test_cancel_stream_not_blocked(self):
+    def test_cancel_stream_not_blocked(self) -> None:
         decoder = Decoder(0x100, 0x10)
 
         self.assertEqual(decoder.cancel_stream(4), b"\x44")
@@ -113,10 +110,10 @@ class DecoderTest(TestCase):
         # the largest stream ID needs a 10-byte instruction
         self.assertEqual(
             decoder.cancel_stream(2**62 - 1),
-            binascii.unhexlify("7fc0ffffffffffffff3f"),
+            bytes.fromhex("7fc0ffffffffffffff3f"),
         )
 
-    def test_decompress_failed_empty_header_name(self):
+    def test_decompress_failed_empty_header_name(self) -> None:
         """
         Decoding a header with an empty name should fail but not crash.
 
@@ -126,30 +123,71 @@ class DecoderTest(TestCase):
         """
         decoder = Decoder(0x100, 0x10)
         with self.assertRaises(DecompressionFailed) as cm:
-            decoder.feed_header(0, binascii.unhexlify("00002a3d458294e72003626172"))
+            decoder.feed_header(0, bytes.fromhex("00002a3d458294e72003626172"))
         self.assertEqual(str(cm.exception), "lsqpack_dec_header_in for stream 0 failed")
 
-    def test_decompression_failed_too_short(self):
+    def test_decompression_failed_too_short(self) -> None:
         decoder = Decoder(0x100, 0x10)
 
         with self.assertRaises(DecompressionFailed) as cm:
             decoder.feed_header(0, b"")
         self.assertEqual(str(cm.exception), "lsqpack_dec_header_in for stream 0 failed")
 
-    def test_decompression_failed_invalid(self):
+    def test_decompression_failed_invalid(self) -> None:
         decoder = Decoder(0x100, 0x10)
 
         with self.assertRaises(DecompressionFailed) as cm:
             decoder.feed_header(0, b"123")
         self.assertEqual(str(cm.exception), "lsqpack_dec_header_in for stream 0 failed")
 
-    def test_encoder_stream_error(self):
+    def test_encoder_stream_error(self) -> None:
         decoder = Decoder(0x100, 0x10)
         with self.assertRaises(EncoderStreamError) as cm:
             decoder.feed_encoder(b"\x00")
         self.assertEqual(str(cm.exception), "lsqpack_dec_enc_in failed")
 
-    def test_reduced_table_capacity(self):
+    def test_encoder_stream_not_bytes(self) -> None:
+        decoder = Decoder(0x100, 0x10)
+        with self.assertRaises(TypeError):
+            decoder.feed_encoder("hello")  # type: ignore[arg-type]
+
+    def test_feed_header_already_pending(self) -> None:
+        """
+        A stream can only have one pending header block.
+        """
+        decoder = Decoder(0x100, 0x10)
+
+        with self.assertRaises(StreamBlocked):
+            decoder.feed_header(0, bytes.fromhex("0482d9101112"))
+
+        with self.assertRaises(ValueError) as cm:
+            decoder.feed_header(0, bytes.fromhex("0482d9101112"))
+        self.assertEqual(
+            str(cm.exception), "a header block for stream 0 already exists"
+        )
+
+    def test_init_invalid_arguments(self) -> None:
+        """
+        The settings must fit in an unsigned int without wrapping around.
+        """
+        Decoder(2**32 - 1, 2**32 - 1)
+
+        for args, message in [
+            ((-1, 16), "max_table_capacity must be between 0 and 2**32 - 1"),
+            ((2**32, 16), "max_table_capacity must be between 0 and 2**32 - 1"),
+            ((4096, -1), "blocked_streams must be between 0 and 2**32 - 1"),
+            ((4096, 2**32), "blocked_streams must be between 0 and 2**32 - 1"),
+        ]:
+            with self.subTest(args=args):
+                with self.assertRaises(ValueError) as cm:
+                    Decoder(*args)
+                self.assertEqual(str(cm.exception), message)
+
+        with self.assertRaises(TypeError) as type_cm:
+            Decoder(4096.0, 16)  # type: ignore[arg-type]
+        self.assertEqual(str(type_cm.exception), "max_table_capacity must be an int")
+
+    def test_reduced_table_capacity(self) -> None:
         """
         Decoding a header block must succeed when the encoder selected a
         dynamic table capacity lower than the maximum, and the Required
@@ -162,15 +200,124 @@ class DecoderTest(TestCase):
         stream_id = 0
 
         # Set Dynamic Table Capacity to 4096, then insert 258 entries.
-        data = binascii.unhexlify("3fe11f")
+        data = bytes.fromhex("3fe11f")
         for i in range(258):
             value = b"%03d" % i
             data += b"\x41a" + bytes([len(value)]) + value
         decoder.feed_encoder(data)
 
         # Required Insert Count = 258, Base = 258, relative indexes 2, 1, 0.
-        control, headers = decoder.feed_header(
-            stream_id, binascii.unhexlify("ff0400828180")
-        )
+        control, headers = decoder.feed_header(stream_id, bytes.fromhex("ff0400828180"))
         self.assertEqual(control, b"\x80")
         self.assertEqual(headers, [(b"a", b"255"), (b"a", b"256"), (b"a", b"257")])
+
+    def test_resume_header_decompression_failed(self) -> None:
+        """
+        A header block which fails to decode once it is unblocked is discarded.
+        """
+        decoder = Decoder(0x100, 0x10)
+        stream_id = 0
+
+        # Required Insert Count = 1, Base = 1, then an indexed field line for
+        # static index 190, which does not exist.
+        with self.assertRaises(StreamBlocked):
+            decoder.feed_header(stream_id, b"\x02\x00\xff\x7f")
+
+        # Set Dynamic Table Capacity to 256, then insert ("a", "b").
+        self.assertEqual(
+            decoder.feed_encoder(bytes.fromhex("3fe101") + b"\x41a\x01b"),
+            [stream_id],
+        )
+
+        with self.assertRaises(DecompressionFailed) as cm:
+            decoder.resume_header(stream_id)
+        self.assertEqual(
+            str(cm.exception), "lsqpack_dec_header_read for stream 0 failed (3)"
+        )
+
+        with self.assertRaises(ValueError) as value_cm:
+            decoder.resume_header(stream_id)
+        self.assertEqual(
+            str(value_cm.exception), "no pending header block for stream 0"
+        )
+
+    def test_stream_id_in_messages(self) -> None:
+        """
+        Error messages show stream IDs in full, up to the largest QUIC stream ID.
+        """
+        stream_id = 2**62 - 1
+        decoder = Decoder(0x100, 0x10)
+
+        with self.assertRaises(DecompressionFailed) as failed_cm:
+            decoder.feed_header(stream_id, b"")
+        self.assertEqual(
+            str(failed_cm.exception),
+            "lsqpack_dec_header_in for stream 4611686018427387903 failed",
+        )
+
+        with self.assertRaises(ValueError) as value_cm:
+            decoder.resume_header(stream_id)
+        self.assertEqual(
+            str(value_cm.exception),
+            "no pending header block for stream 4611686018427387903",
+        )
+
+        # Required Insert Count = 1, Base = 1, then an indexed field line for
+        # static index 190, which does not exist.
+        with self.assertRaises(StreamBlocked) as blocked_cm:
+            decoder.feed_header(stream_id, b"\x02\x00\xff\x7f")
+        self.assertEqual(
+            str(blocked_cm.exception), "stream 4611686018427387903 is blocked"
+        )
+
+        with self.assertRaises(ValueError) as value_cm:
+            decoder.feed_header(stream_id, b"\x02\x00\xff\x7f")
+        self.assertEqual(
+            str(value_cm.exception),
+            "a header block for stream 4611686018427387903 already exists",
+        )
+
+        with self.assertRaises(StreamBlocked) as blocked_cm:
+            decoder.resume_header(stream_id)
+        self.assertEqual(
+            str(blocked_cm.exception), "stream 4611686018427387903 is blocked"
+        )
+
+        # Set Dynamic Table Capacity to 256, then insert ("a", "b").
+        self.assertEqual(
+            decoder.feed_encoder(bytes.fromhex("3fe101") + b"\x41a\x01b"),
+            [stream_id],
+        )
+        with self.assertRaises(DecompressionFailed) as failed_cm:
+            decoder.resume_header(stream_id)
+        self.assertEqual(
+            str(failed_cm.exception),
+            "lsqpack_dec_header_read for stream 4611686018427387903 failed (3)",
+        )
+
+    def test_stream_id_invalid(self) -> None:
+        """
+        Stream IDs must be QUIC stream IDs, see RFC 9000 section 2.1.
+        """
+        decoder = Decoder(0x100, 0x10)
+        self.assertEqual(
+            decoder.cancel_stream(2**62 - 1),
+            bytes.fromhex("7fc0ffffffffffffff3f"),
+        )
+
+        for name, call in [
+            ("cancel_stream", decoder.cancel_stream),
+            ("feed_header", lambda stream_id: decoder.feed_header(stream_id, b"")),
+            ("resume_header", decoder.resume_header),
+        ]:
+            for stream_id in (-1, 2**62):
+                with self.subTest(method=name, stream_id=stream_id):
+                    with self.assertRaises(ValueError) as cm:
+                        call(stream_id)
+                    self.assertEqual(
+                        str(cm.exception), "stream_id must be between 0 and 2**62 - 1"
+                    )
+            with self.subTest(method=name, stream_id="0"):
+                with self.assertRaises(TypeError) as type_cm:
+                    call("0")  # type: ignore[arg-type]
+                self.assertEqual(str(type_cm.exception), "stream_id must be an int")

@@ -31,12 +31,17 @@ dynamic = ["version"]
 homepage = "https://github.com/aiortc/pylsqpack"
 documentation = "https://pylsqpack.readthedocs.io/"
 
+[tool.mypy]
+files = ["src", "tests"]
+strict = true
+
 [tool.ruff.lint]
 select = [
     "E",  # pycodestyle
     "F",  # Pyflakes
     "W",  # pycodestyle
     "I",  # isort
+    "UP",  # pyupgrade
 ]
 
 [tool.setuptools.dynamic]

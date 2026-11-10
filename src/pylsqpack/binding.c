@@ -1,6 +1,7 @@
 #define PY_SSIZE_T_CLEAN
 
 #include <assert.h>
+#include <limits.h>
 #include <string.h>
 
 #include <Python.h>
@@ -19,6 +20,9 @@
 #define FIELD_OVERHEAD_MAX 8
 #define MIN_BUF_SZ 64
 
+// The largest QUIC stream ID (RFC 9000 section 2.1).
+#define STREAM_ID_MAX ((1ULL << 62) - 1)
+
 static PyObject *DecompressionFailed;
 static PyObject *DecoderStreamError;
 static PyObject *DecoderType;
@@ -26,10 +30,38 @@ static PyObject *EncoderStreamError;
 static PyObject *EncoderType;
 static PyObject *StreamBlocked;
 
+// An unsigned integer argument, converted by `convert_unsigned`.
+struct unsigned_arg {
+    const char *name;
+    unsigned long long max;
+    const char *max_text;
+    unsigned long long value;
+};
+
+// Convert a Python integer to an unsigned integer of at most `arg->max`. Unlike
+// the "I" and "K" formats, this refuses negative and too large values instead of
+// wrapping them around.
+static int convert_unsigned(PyObject *obj, void *ptr)
+{
+    struct unsigned_arg *arg = ptr;
+
+    if (!PyLong_Check(obj)) {
+        PyErr_Format(PyExc_TypeError, "%s must be an int", arg->name);
+        return 0;
+    }
+    arg->value = PyLong_AsUnsignedLongLong(obj);
+    if (PyErr_Occurred() || arg->value > arg->max) {
+        PyErr_Clear();
+        PyErr_Format(PyExc_ValueError, "%s must be between 0 and %s", arg->name, arg->max_text);
+        return 0;
+    }
+    return 1;
+}
+
 struct header_block {
     STAILQ_ENTRY(header_block) entries;
 
-    int blocked:1;
+    unsigned blocked:1;
     unsigned char *data;
     size_t data_len;
     const unsigned char *data_ptr;
@@ -40,7 +72,7 @@ struct header_block {
     PyObject *headers;
 };
 
-static struct header_block *header_block_new(size_t stream_id, const unsigned char *data, size_t data_len)
+static struct header_block *header_block_new(uint64_t stream_id, const unsigned char *data, size_t data_len)
 {
     struct header_block *hblock = PyMem_Malloc(sizeof(struct header_block));
     memset(hblock, 0, sizeof(*hblock));
@@ -132,11 +164,13 @@ static int
 Decoder_init(DecoderObject *self, PyObject *args, PyObject *kwargs)
 {
     char *kwlist[] = {"max_table_capacity", "blocked_streams", NULL};
-    unsigned max_table_capacity, blocked_streams;
-    if (!PyArg_ParseTupleAndKeywords(args, kwargs, "II", kwlist, &max_table_capacity, &blocked_streams))
+    struct unsigned_arg max_table_capacity = {.name = "max_table_capacity", .max = UINT_MAX, .max_text = "2**32 - 1"};
+    struct unsigned_arg blocked_streams = {.name = "blocked_streams", .max = UINT_MAX, .max_text = "2**32 - 1"};
+    if (!PyArg_ParseTupleAndKeywords(args, kwargs, "O&O&", kwlist, convert_unsigned, &max_table_capacity,
+                                     convert_unsigned, &blocked_streams))
         return -1;
 
-    lsqpack_dec_init(&self->dec, NULL, max_table_capacity, blocked_streams, &header_block_if, 0);
+    lsqpack_dec_init(&self->dec, NULL, max_table_capacity.value, blocked_streams.value, &header_block_if, 0);
 
     STAILQ_INIT(&self->pending_blocks);
 
@@ -173,13 +207,15 @@ static PyObject*
 Decoder_cancel_stream(DecoderObject *self, PyObject *args, PyObject *kwargs)
 {
     char *kwlist[] = {"stream_id", NULL};
+    struct unsigned_arg stream_id_arg = {.name = "stream_id", .max = STREAM_ID_MAX, .max_text = "2**62 - 1"};
     uint64_t stream_id;
     ssize_t dec_len;
     struct header_block *hblock;
     int found = 0;
 
-    if (!PyArg_ParseTupleAndKeywords(args, kwargs, "K", kwlist, &stream_id))
+    if (!PyArg_ParseTupleAndKeywords(args, kwargs, "O&", kwlist, convert_unsigned, &stream_id_arg))
         return NULL;
+    stream_id = stream_id_arg.value;
 
     // find the header block for the stream
     STAILQ_FOREACH(hblock, &self->pending_blocks, entries) {
@@ -253,6 +289,7 @@ static PyObject*
 Decoder_feed_header(DecoderObject *self, PyObject *args, PyObject *kwargs)
 {
     char *kwlist[] = {"stream_id", "data", NULL};
+    struct unsigned_arg stream_id_arg = {.name = "stream_id", .max = STREAM_ID_MAX, .max_text = "2**62 - 1"};
     uint64_t stream_id;
     const unsigned char *data;
     Py_ssize_t data_len;
@@ -261,13 +298,14 @@ Decoder_feed_header(DecoderObject *self, PyObject *args, PyObject *kwargs)
     enum lsqpack_read_header_status status;
     struct header_block *hblock;
 
-    if (!PyArg_ParseTupleAndKeywords(args, kwargs, "Ky#", kwlist, &stream_id, &data, &data_len))
+    if (!PyArg_ParseTupleAndKeywords(args, kwargs, "O&y#", kwlist, convert_unsigned, &stream_id_arg, &data, &data_len))
         return NULL;
+    stream_id = stream_id_arg.value;
 
     // check there is no header block for the stream
     STAILQ_FOREACH(hblock, &self->pending_blocks, entries) {
         if (hblock->stream_id == stream_id) {
-            PyErr_Format(PyExc_ValueError, "a header block for stream %d already exists", stream_id);
+            PyErr_Format(PyExc_ValueError, "a header block for stream %llu already exists", (unsigned long long)stream_id);
             return NULL;
         }
     }
@@ -287,10 +325,10 @@ Decoder_feed_header(DecoderObject *self, PyObject *args, PyObject *kwargs)
     if (status == LQRHS_BLOCKED || status == LQRHS_NEED) {
         hblock->blocked = 1;
         STAILQ_INSERT_TAIL(&self->pending_blocks, hblock, entries);
-        PyErr_Format(StreamBlocked, "stream %d is blocked", stream_id);
+        PyErr_Format(StreamBlocked, "stream %llu is blocked", (unsigned long long)stream_id);
         return NULL;
     } else if (status != LQRHS_DONE) {
-        PyErr_Format(DecompressionFailed, "lsqpack_dec_header_in for stream %d failed", stream_id);
+        PyErr_Format(DecompressionFailed, "lsqpack_dec_header_in for stream %llu failed", (unsigned long long)stream_id);
         header_block_free(hblock);
         return NULL;
     }
@@ -317,6 +355,7 @@ static PyObject*
 Decoder_resume_header(DecoderObject *self, PyObject *args, PyObject *kwargs)
 {
     char *kwlist[] = {"stream_id", NULL};
+    struct unsigned_arg stream_id_arg = {.name = "stream_id", .max = STREAM_ID_MAX, .max_text = "2**62 - 1"};
     uint64_t stream_id;
     PyObject *control, *tuple;
     size_t dec_len = DEC_BUF_SZ;
@@ -324,8 +363,9 @@ Decoder_resume_header(DecoderObject *self, PyObject *args, PyObject *kwargs)
     struct header_block *hblock;
     int found = 0;
 
-    if (!PyArg_ParseTupleAndKeywords(args, kwargs, "K", kwlist, &stream_id))
+    if (!PyArg_ParseTupleAndKeywords(args, kwargs, "O&", kwlist, convert_unsigned, &stream_id_arg))
         return NULL;
+    stream_id = stream_id_arg.value;
 
     // find the header block for the stream
     STAILQ_FOREACH(hblock, &self->pending_blocks, entries) {
@@ -335,7 +375,7 @@ Decoder_resume_header(DecoderObject *self, PyObject *args, PyObject *kwargs)
         }
     }
     if (!found) {
-        PyErr_Format(PyExc_ValueError, "no pending header block for stream %d", stream_id);
+        PyErr_Format(PyExc_ValueError, "no pending header block for stream %llu", (unsigned long long)stream_id);
         return NULL;
     }
 
@@ -354,10 +394,10 @@ Decoder_resume_header(DecoderObject *self, PyObject *args, PyObject *kwargs)
 
     if (status == LQRHS_BLOCKED || status == LQRHS_NEED) {
         hblock->blocked = 1;
-        PyErr_Format(StreamBlocked, "stream %d is blocked", stream_id);
+        PyErr_Format(StreamBlocked, "stream %llu is blocked", (unsigned long long)stream_id);
         return NULL;
     } else if (status != LQRHS_DONE) {
-        PyErr_Format(DecompressionFailed, "lsqpack_dec_header_read for stream %d failed (%d)", stream_id, status);
+        PyErr_Format(DecompressionFailed, "lsqpack_dec_header_read for stream %llu failed (%d)", (unsigned long long)stream_id, status);
         STAILQ_REMOVE(&self->pending_blocks, hblock, header_block, entries);
         header_block_free(hblock);
         return NULL;
@@ -374,10 +414,10 @@ Decoder_resume_header(DecoderObject *self, PyObject *args, PyObject *kwargs)
 }
 
 static PyMethodDef Decoder_methods[] = {
-    {"cancel_stream", (PyCFunction)Decoder_cancel_stream, METH_VARARGS | METH_KEYWORDS, Decoder_cancel_stream__doc__},
-    {"feed_encoder", (PyCFunction)Decoder_feed_encoder, METH_VARARGS | METH_KEYWORDS, Decoder_feed_encoder__doc__},
-    {"feed_header", (PyCFunction)Decoder_feed_header, METH_VARARGS | METH_KEYWORDS, Decoder_feed_header__doc__},
-    {"resume_header", (PyCFunction)Decoder_resume_header, METH_VARARGS | METH_KEYWORDS, Decoder_resume_header__doc__},
+    {"cancel_stream", (PyCFunction)(void (*)(void))Decoder_cancel_stream, METH_VARARGS | METH_KEYWORDS, Decoder_cancel_stream__doc__},
+    {"feed_encoder", (PyCFunction)(void (*)(void))Decoder_feed_encoder, METH_VARARGS | METH_KEYWORDS, Decoder_feed_encoder__doc__},
+    {"feed_header", (PyCFunction)(void (*)(void))Decoder_feed_header, METH_VARARGS | METH_KEYWORDS, Decoder_feed_header__doc__},
+    {"resume_header", (PyCFunction)(void (*)(void))Decoder_resume_header, METH_VARARGS | METH_KEYWORDS, Decoder_resume_header__doc__},
     {NULL}
 };
 
@@ -445,7 +485,15 @@ grow_buffer(unsigned char **buf, size_t *cap)
 static int
 Encoder_init(EncoderObject *self, PyObject *args, PyObject *kwargs)
 {
+    char *kwlist[] = {NULL};
+
+    // Initialise first, so that the encoder can be cleaned up even if the
+    // arguments are refused.
     lsqpack_enc_preinit(&self->enc, NULL);
+
+    if (!PyArg_ParseTupleAndKeywords(args, kwargs, "", kwlist))
+        return -1;
+
     return 0;
 }
 
@@ -473,14 +521,16 @@ static PyObject*
 Encoder_apply_settings(EncoderObject *self, PyObject *args, PyObject *kwargs)
 {
     char *kwlist[] = {"max_table_capacity", "blocked_streams", NULL};
-    unsigned max_table_capacity, blocked_streams;
+    struct unsigned_arg max_table_capacity = {.name = "max_table_capacity", .max = UINT_MAX, .max_text = "2**32 - 1"};
+    struct unsigned_arg blocked_streams = {.name = "blocked_streams", .max = UINT_MAX, .max_text = "2**32 - 1"};
     unsigned char tsu_buf[LSQPACK_LONGEST_SDTC];
     size_t tsu_len = sizeof(tsu_buf);
 
-    if (!PyArg_ParseTupleAndKeywords(args, kwargs, "II", kwlist, &max_table_capacity, &blocked_streams))
+    if (!PyArg_ParseTupleAndKeywords(args, kwargs, "O&O&", kwlist, convert_unsigned, &max_table_capacity,
+                                     convert_unsigned, &blocked_streams))
         return NULL;
 
-    if (lsqpack_enc_init(&self->enc, NULL, max_table_capacity, max_table_capacity, blocked_streams,
+    if (lsqpack_enc_init(&self->enc, NULL, max_table_capacity.value, max_table_capacity.value, blocked_streams.value,
                          LSQPACK_ENC_OPT_STAGE_2, tsu_buf, &tsu_len) != 0) {
         PyErr_SetString(PyExc_RuntimeError, "lsqpack_enc_init failed");
         return NULL;
@@ -501,6 +551,7 @@ static PyObject*
 Encoder_encode(EncoderObject *self, PyObject *args, PyObject *kwargs)
 {
     char *kwlist[] = {"stream_id", "headers", NULL};
+    struct unsigned_arg stream_id_arg = {.name = "stream_id", .max = STREAM_ID_MAX, .max_text = "2**62 - 1"};
     uint64_t stream_id;
     unsigned seqno = 0;
     PyObject *list, *tuple, *name, *value;
@@ -511,8 +562,9 @@ Encoder_encode(EncoderObject *self, PyObject *args, PyObject *kwargs)
     size_t total_len = 0, xhdr_len = 0;
     enum lsqpack_enc_status status;
 
-    if (!PyArg_ParseTupleAndKeywords(args, kwargs, "KO", kwlist, &stream_id, &list))
+    if (!PyArg_ParseTupleAndKeywords(args, kwargs, "O&O", kwlist, convert_unsigned, &stream_id_arg, &list))
         return NULL;
+    stream_id = stream_id_arg.value;
 
     // Validate all the input headers.
     if (!PyList_Check(list)) {
@@ -649,9 +701,9 @@ Encoder_feed_decoder(EncoderObject *self, PyObject *args, PyObject *kwargs)
 }
 
 static PyMethodDef Encoder_methods[] = {
-    {"apply_settings", (PyCFunction)Encoder_apply_settings, METH_VARARGS | METH_KEYWORDS, Encoder_apply_settings__doc__},
-    {"encode", (PyCFunction)Encoder_encode, METH_VARARGS | METH_KEYWORDS, Encoder_encode__doc__},
-    {"feed_decoder", (PyCFunction)Encoder_feed_decoder, METH_VARARGS | METH_KEYWORDS, Encoder_feed_decoder__doc__},
+    {"apply_settings", (PyCFunction)(void (*)(void))Encoder_apply_settings, METH_VARARGS | METH_KEYWORDS, Encoder_apply_settings__doc__},
+    {"encode", (PyCFunction)(void (*)(void))Encoder_encode, METH_VARARGS | METH_KEYWORDS, Encoder_encode__doc__},
+    {"feed_decoder", (PyCFunction)(void (*)(void))Encoder_feed_decoder, METH_VARARGS | METH_KEYWORDS, Encoder_feed_decoder__doc__},
     {NULL}
 };
 
