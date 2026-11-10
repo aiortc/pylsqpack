@@ -1,5 +1,5 @@
 API Reference
--------------
+=============
 
 .. automodule:: pylsqpack
 
@@ -8,3 +8,14 @@ API Reference
 
    .. autoclass:: Encoder
       :members:
+
+Exceptions
+----------
+
+.. autoexception:: DecompressionFailed
+
+.. autoexception:: DecoderStreamError
+
+.. autoexception:: EncoderStreamError
+
+.. autoexception:: StreamBlocked

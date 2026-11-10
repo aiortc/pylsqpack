@@ -210,8 +210,8 @@ PyDoc_STRVAR(Decoder_feed_encoder__doc__,
     "Feed data from the encoder stream.\n\n"
     "If processing the data unblocked any streams, their IDs are returned, "
     "and :meth:`resume_header()` must be called for each stream ID.\n\n"
-    "If the data cannot be processed, :class:`EncoderStreamError` is raised.\n\n"
-    ":param data: the encoder stream data\n");
+    ":param data: the encoder stream data\n"
+    ":raises EncoderStreamError: if the data cannot be processed\n");
 
 static PyObject*
 Decoder_feed_encoder(DecoderObject *self, PyObject *args, PyObject *kwargs)
@@ -244,10 +244,10 @@ Decoder_feed_encoder(DecoderObject *self, PyObject *args, PyObject *kwargs)
 PyDoc_STRVAR(Decoder_feed_header__doc__,
     "feed_header(stream_id: int, data: bytes) -> Tuple[bytes, List[Tuple[bytes, bytes]]]\n\n"
     "Decode a header block and return control data and headers.\n\n"
-    "If the stream is blocked, :class:`StreamBlocked` is raised.\n\n"
-    "If the data cannot be processed, :class:`DecompressionFailed` is raised.\n\n"
     ":param stream_id: the ID of the stream\n"
-    ":param data: the header block data\n");
+    ":param data: the header block data\n"
+    ":raises StreamBlocked: if the stream is blocked\n"
+    ":raises DecompressionFailed: if the header block cannot be decoded\n");
 
 static PyObject*
 Decoder_feed_header(DecoderObject *self, PyObject *args, PyObject *kwargs)
@@ -309,7 +309,9 @@ PyDoc_STRVAR(Decoder_resume_header__doc__,
     "Continue decoding a header block and return control data and headers.\n\n"
     "This method should be called only when :meth:`feed_encoder` indicates "
     "that a stream has become unblocked\n\n"
-    ":param stream_id: the ID of the stream\n");
+    ":param stream_id: the ID of the stream\n"
+    ":raises StreamBlocked: if the stream is still blocked\n"
+    ":raises DecompressionFailed: if the header block cannot be decoded\n");
 
 static PyObject*
 Decoder_resume_header(DecoderObject *self, PyObject *args, PyObject *kwargs)
@@ -625,8 +627,8 @@ Encoder_encode(EncoderObject *self, PyObject *args, PyObject *kwargs)
 PyDoc_STRVAR(Encoder_feed_decoder__doc__,
     "feed_decoder(data: bytes) -> None\n\n"
     "Feed data from the decoder stream.\n\n"
-    "If the data cannot be processed, :class:`DecoderStreamError` is raised.\n\n"
-    ":param data: the decoder stream data\n");
+    ":param data: the decoder stream data\n"
+    ":raises DecoderStreamError: if the data cannot be processed\n");
 
 static PyObject*
 Encoder_feed_decoder(EncoderObject *self, PyObject *args, PyObject *kwargs)
@@ -696,19 +698,29 @@ PyInit__binding(void)
     if (m == NULL)
         return NULL;
 
-    DecompressionFailed = PyErr_NewException(MODULE_NAME ".DecompressionFailed", PyExc_ValueError, NULL);
+    DecompressionFailed = PyErr_NewExceptionWithDoc(MODULE_NAME ".DecompressionFailed",
+        "A header block could not be decoded.",
+        PyExc_ValueError, NULL);
     Py_INCREF(DecompressionFailed);
     PyModule_AddObject(m, "DecompressionFailed", DecompressionFailed);
 
-    DecoderStreamError = PyErr_NewException(MODULE_NAME ".DecoderStreamError", PyExc_ValueError, NULL);
+    DecoderStreamError = PyErr_NewExceptionWithDoc(MODULE_NAME ".DecoderStreamError",
+        "Data from the decoder stream could not be processed.",
+        PyExc_ValueError, NULL);
     Py_INCREF(DecoderStreamError);
     PyModule_AddObject(m, "DecoderStreamError", DecoderStreamError);
 
-    EncoderStreamError = PyErr_NewException(MODULE_NAME ".EncoderStreamError", PyExc_ValueError, NULL);
+    EncoderStreamError = PyErr_NewExceptionWithDoc(MODULE_NAME ".EncoderStreamError",
+        "Data from the encoder stream could not be processed.",
+        PyExc_ValueError, NULL);
     Py_INCREF(EncoderStreamError);
     PyModule_AddObject(m, "EncoderStreamError", EncoderStreamError);
 
-    StreamBlocked = PyErr_NewException(MODULE_NAME ".StreamBlocked", PyExc_ValueError, NULL);
+    StreamBlocked = PyErr_NewExceptionWithDoc(MODULE_NAME ".StreamBlocked",
+        "A header block references dynamic table entries which have not been received yet.\n\n"
+        "Call :meth:`Decoder.resume_header` once :meth:`Decoder.feed_encoder` returns the "
+        "stream's ID.",
+        PyExc_ValueError, NULL);
     Py_INCREF(StreamBlocked);
     PyModule_AddObject(m, "StreamBlocked", StreamBlocked);
 
