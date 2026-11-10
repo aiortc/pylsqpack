@@ -18,4 +18,6 @@ Exceptions
 
 .. autoexception:: EncoderStreamError
 
+.. autoexception:: FieldSectionTooLarge
+
 .. autoexception:: StreamBlocked

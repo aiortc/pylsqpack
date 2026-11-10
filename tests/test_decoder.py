@@ -1,6 +1,25 @@
 from unittest import TestCase
 
-from pylsqpack import Decoder, DecompressionFailed, EncoderStreamError, StreamBlocked
+from pylsqpack import (
+    Decoder,
+    DecompressionFailed,
+    Encoder,
+    EncoderStreamError,
+    FieldSectionTooLarge,
+    StreamBlocked,
+)
+
+# Set Dynamic Table Capacity to 4096, then Insert with Literal Name a field of
+# 5 + 100 bytes, whose size in a field section is 137 bytes.
+BIG_ENTRY_ENCODER = bytes.fromhex("3fe11f") + b"\x45x-big\x64" + b"a" * 100
+
+
+def big_entry_references(count: int) -> bytes:
+    """
+    Return a header block with `count` references to the entry inserted by
+    BIG_ENTRY_ENCODER: Required Insert Count = 1, Base = 1, relative index 0.
+    """
+    return b"\x02\x00" + b"\x80" * count
 
 
 class DecoderTest(TestCase):
@@ -166,6 +185,102 @@ class DecoderTest(TestCase):
             str(cm.exception), "a header block for stream 0 already exists"
         )
 
+    def test_field_section_too_large(self) -> None:
+        """
+        A field section counts the length of each name and value plus 32
+        bytes per field, see RFC 9114 section 4.2.2.
+        """
+        headers = [(b":method", b"GET"), (b"x-foo", b"a" * 100)]
+        _, data = Encoder().encode(0, headers)
+
+        # (7 + 3 + 32) + (5 + 100 + 32) = 179 bytes
+        decoder = Decoder(0x100, 0x10, max_field_section_size=179)
+        self.assertEqual(decoder.feed_header(0, data), (b"", headers))
+
+        decoder = Decoder(0x100, 0x10, max_field_section_size=178)
+        with self.assertRaises(FieldSectionTooLarge) as cm:
+            decoder.feed_header(0, data)
+        self.assertEqual(
+            str(cm.exception), "field section for stream 0 exceeds 178 bytes"
+        )
+
+    def test_field_section_too_large_blocked(self) -> None:
+        """
+        The limit also applies to a header block which was blocked, and the
+        header block is discarded.
+        """
+        decoder = Decoder(4096, 16, max_field_section_size=3 * 137)
+
+        with self.assertRaises(StreamBlocked):
+            decoder.feed_header(0, big_entry_references(4))
+        self.assertEqual(decoder.feed_encoder(BIG_ENTRY_ENCODER), [0])
+
+        with self.assertRaises(FieldSectionTooLarge) as cm:
+            decoder.resume_header(0)
+        self.assertEqual(
+            str(cm.exception), "field section for stream 0 exceeds 411 bytes"
+        )
+
+        with self.assertRaises(ValueError) as value_cm:
+            decoder.resume_header(0)
+        self.assertEqual(
+            str(value_cm.exception), "no pending header block for stream 0"
+        )
+
+    def test_field_section_too_large_default(self) -> None:
+        """
+        By default, field sections are limited to 256 KiB. The error is also a
+        DecompressionFailed, for callers which only catch that.
+        """
+        decoder = Decoder(0x100, 0x10)
+
+        # 4 * (1 + 65503 + 32) = 262144 bytes
+        headers = [(b"x", b"a" * 65503)] * 4
+        self.assertEqual(
+            decoder.feed_header(0, Encoder().encode(0, headers)[1]), (b"", headers)
+        )
+
+        with self.assertRaises(FieldSectionTooLarge) as cm:
+            decoder.feed_header(4, Encoder().encode(4, headers + [(b"y", b"")])[1])
+        self.assertIsInstance(cm.exception, DecompressionFailed)
+        self.assertEqual(
+            str(cm.exception), "field section for stream 4 exceeds 262144 bytes"
+        )
+
+    def test_field_section_too_large_dynamic_table(self) -> None:
+        """
+        References to the dynamic table are counted at their decoded size. The
+        stream can be cancelled, and the decoder keeps working for other streams.
+        """
+        decoder = Decoder(4096, 16, max_field_section_size=3 * 137)
+        self.assertEqual(decoder.feed_encoder(BIG_ENTRY_ENCODER), [])
+
+        with self.assertRaises(FieldSectionTooLarge) as cm:
+            decoder.feed_header(0, big_entry_references(4))
+        self.assertEqual(
+            str(cm.exception), "field section for stream 0 exceeds 411 bytes"
+        )
+        self.assertEqual(decoder.cancel_stream(0), b"\x40")
+
+        control, headers = decoder.feed_header(4, big_entry_references(3))
+        self.assertEqual(control, b"\x84")
+        self.assertEqual(headers, [(b"x-big", b"a" * 100)] * 3)
+
+    def test_field_section_too_large_static_table(self) -> None:
+        """
+        A field from the static table is counted too, even when it is the first
+        one.
+        """
+        _, data = Encoder().encode(0, [(b":method", b"GET")])
+
+        # 7 + 3 + 32 = 42 bytes
+        decoder = Decoder(0x100, 0x10, max_field_section_size=41)
+        with self.assertRaises(FieldSectionTooLarge) as cm:
+            decoder.feed_header(0, data)
+        self.assertEqual(
+            str(cm.exception), "field section for stream 0 exceeds 41 bytes"
+        )
+
     def test_init_invalid_arguments(self) -> None:
         """
         The settings must fit in an unsigned int without wrapping around.
@@ -186,6 +301,43 @@ class DecoderTest(TestCase):
         with self.assertRaises(TypeError) as type_cm:
             Decoder(4096.0, 16)  # type: ignore[arg-type]
         self.assertEqual(str(type_cm.exception), "max_table_capacity must be an int")
+
+    def test_max_field_section_size_range(self) -> None:
+        """
+        The maximum field section size must be a QUIC variable-length integer,
+        so that it can be advertised in SETTINGS_MAX_FIELD_SECTION_SIZE.
+        """
+        # 0 refuses any field.
+        decoder = Decoder(0x100, 0x10, max_field_section_size=0)
+        with self.assertRaises(FieldSectionTooLarge) as cm:
+            decoder.feed_header(0, Encoder().encode(0, [(b"x", b"")])[1])
+        self.assertEqual(
+            str(cm.exception), "field section for stream 0 exceeds 0 bytes"
+        )
+
+        # 2**62 - 1 accepts more than the default.
+        decoder = Decoder(0x100, 0x10, max_field_section_size=2**62 - 1)
+        headers = [(b"x", b"a" * 65503)] * 5
+        self.assertEqual(
+            decoder.feed_header(0, Encoder().encode(0, headers)[1]), (b"", headers)
+        )
+
+        for value in (-1, 2**62):
+            with self.subTest(value=value):
+                with self.assertRaises(ValueError) as value_cm:
+                    Decoder(0x100, 0x10, max_field_section_size=value)
+                self.assertEqual(
+                    str(value_cm.exception),
+                    "max_field_section_size must be between 0 and 2**62 - 1",
+                )
+
+        for wrong_type in (None, "1"):
+            with self.subTest(value=wrong_type):
+                with self.assertRaises(TypeError) as type_cm:
+                    Decoder(0x100, 0x10, max_field_section_size=wrong_type)  # type: ignore[arg-type]
+                self.assertEqual(
+                    str(type_cm.exception), "max_field_section_size must be an int"
+                )
 
     def test_reduced_table_capacity(self) -> None:
         """
