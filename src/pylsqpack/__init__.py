@@ -6,6 +6,7 @@ from ._binding import (
     DecompressionFailed,
     Encoder,
     EncoderStreamError,
+    FieldSectionTooLarge,
     StreamBlocked,
 )
 
