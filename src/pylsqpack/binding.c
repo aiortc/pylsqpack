@@ -277,7 +277,7 @@ Decoder_cancel_stream(DecoderObject *self, PyObject *args, PyObject *kwargs)
 }
 
 PyDoc_STRVAR(Decoder_feed_encoder__doc__,
-    "feed_encoder(data: bytes) -> List[int]\n\n"
+    "feed_encoder(data: bytes) -> list[int]\n\n"
     "Feed data from the encoder stream.\n\n"
     "If processing the data unblocked any streams, their IDs are returned, "
     "and :meth:`resume_header()` must be called for each stream ID.\n\n"
@@ -313,7 +313,7 @@ Decoder_feed_encoder(DecoderObject *self, PyObject *args, PyObject *kwargs)
 }
 
 PyDoc_STRVAR(Decoder_feed_header__doc__,
-    "feed_header(stream_id: int, data: bytes) -> Tuple[bytes, List[Tuple[bytes, bytes]]]\n\n"
+    "feed_header(stream_id: int, data: bytes) -> tuple[bytes, list[tuple[bytes, bytes]]]\n\n"
     "Decode a header block and return control data and headers.\n\n"
     ":param stream_id: the ID of the stream\n"
     ":param data: the header block data\n"
@@ -382,7 +382,7 @@ Decoder_feed_header(DecoderObject *self, PyObject *args, PyObject *kwargs)
 }
 
 PyDoc_STRVAR(Decoder_resume_header__doc__,
-    "resume_header(stream_id: int) -> Tuple[bytes, List[Tuple[bytes, bytes]]]\n\n"
+    "resume_header(stream_id: int) -> tuple[bytes, list[tuple[bytes, bytes]]]\n\n"
     "Continue decoding a header block and return control data and headers.\n\n"
     "This method should be called only when :meth:`feed_encoder` indicates "
     "that a stream has become unblocked\n\n"
@@ -587,7 +587,7 @@ Encoder_apply_settings(EncoderObject *self, PyObject *args, PyObject *kwargs)
 }
 
 PyDoc_STRVAR(Encoder_encode__doc__,
-    "encode(stream_id: int, headers: List[Tuple[bytes, bytes]]) -> Tuple[bytes, bytes]\n\n"
+    "encode(stream_id: int, headers: list[tuple[bytes, bytes]]) -> tuple[bytes, bytes]\n\n"
     "Encode a list of headers.\n\n"
     "A tuple is returned containing two bytestrings: the encoder stream data "
     " and the encoded header block.\n\n"
