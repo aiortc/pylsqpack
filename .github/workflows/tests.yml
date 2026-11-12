@@ -113,7 +113,7 @@ jobs:
         env:
           CIBW_ARCHS: ${{ matrix.arch }}
           CIBW_SKIP: 'cp3??t-*'
-          CIBW_TEST_COMMAND: python -m unittest discover -s {project}/tests
+          CIBW_TEST_COMMAND: python -m unittest discover -t {project} -s {project}/tests
         run: |
           pip install cibuildwheel
           cibuildwheel --output-dir dist
