@@ -87,17 +87,31 @@ struct header_block {
     PyObject *headers;
 };
 
+static void header_block_free(struct header_block *hblock);
+
 static struct header_block *header_block_new(uint64_t stream_id, const unsigned char *data, size_t data_len, uint64_t max_field_section_size)
 {
-    struct header_block *hblock = PyMem_Malloc(sizeof(struct header_block));
-    memset(hblock, 0, sizeof(*hblock));
+    struct header_block *hblock = PyMem_Calloc(1, sizeof(struct header_block));
+    if (hblock == NULL) {
+        PyErr_NoMemory();
+        return NULL;
+    }
     hblock->field_section_remaining = max_field_section_size;
     hblock->data = PyMem_Malloc(data_len);
+    if (hblock->data == NULL) {
+        PyErr_NoMemory();
+        header_block_free(hblock);
+        return NULL;
+    }
     hblock->data_len = data_len;
     hblock->data_ptr = hblock->data;
     memcpy(hblock->data, data, data_len);
     hblock->stream_id = stream_id;
     hblock->headers = PyList_New(0);
+    if (hblock->headers == NULL) {
+        header_block_free(hblock);
+        return NULL;
+    }
     return hblock;
 }
 
@@ -107,7 +121,7 @@ static void header_block_free(struct header_block *hblock)
     hblock->data = 0;
     hblock->data_ptr = 0;
     PyMem_Free(hblock->header_buffer);
-    Py_DECREF(hblock->headers);
+    Py_XDECREF(hblock->headers);
     PyMem_Free(hblock);
 }
 
@@ -126,7 +140,10 @@ static struct lsxpack_header *header_block_prepare_decode(void *opaque, struct l
     // Unlike realloc(), PyMem_Realloc() has a defined behaviour for a zero
     // size: it returns a valid pointer.
     buf = PyMem_Realloc(hblock->header_buffer, space);
-    if (!buf) return NULL;
+    if (!buf) {
+        PyErr_NoMemory();
+        return NULL;
+    }
     hblock->header_buffer = buf;
 
     if (xhdr) {
@@ -144,6 +161,8 @@ static struct lsxpack_header *header_block_prepare_decode(void *opaque, struct l
 
 /**
  * Process a decoded header by appending it to the list of headers.
+ *
+ * If this fails, decoding stops with a Python exception set.
  */
 static int header_block_process_header(void *opaque, struct lsxpack_header *xhdr) {
     struct header_block *hblock = opaque;
@@ -160,11 +179,16 @@ static int header_block_process_header(void *opaque, struct lsxpack_header *xhdr
 
     name = PyBytes_FromStringAndSize(lsxpack_header_get_name(xhdr), xhdr->name_len);
     value = PyBytes_FromStringAndSize(lsxpack_header_get_value(xhdr), xhdr->val_len);
-    tuple = PyTuple_Pack(2, name, value);
-    Py_DECREF(name);
-    Py_DECREF(value);
+    tuple = name && value ? PyTuple_Pack(2, name, value) : NULL;
+    Py_XDECREF(name);
+    Py_XDECREF(value);
+    if (tuple == NULL)
+        return -1;
 
-    PyList_Append(hblock->headers, tuple);
+    if (PyList_Append(hblock->headers, tuple) < 0) {
+        Py_DECREF(tuple);
+        return -1;
+    }
     Py_DECREF(tuple);
 
     return 0;
@@ -191,6 +215,21 @@ raise_field_section_too_large(DecoderObject *self, uint64_t stream_id)
 {
     PyErr_Format(FieldSectionTooLarge, "field section for stream %llu exceeds %llu bytes",
                  (unsigned long long)stream_id, (unsigned long long)self->max_field_section_size);
+}
+
+// Return the control data and the headers of a decoded header block. If this
+// fails, the control data is lost: ls-qpack is already done with the block.
+static PyObject *
+decoded_header_block(DecoderObject *self, struct header_block *hblock, size_t dec_len)
+{
+    PyObject *control, *tuple;
+
+    control = PyBytes_FromStringAndSize((const char*)self->dec_buf, dec_len);
+    if (control == NULL)
+        return NULL;
+    tuple = PyTuple_Pack(2, control, hblock->headers);
+    Py_DECREF(control);
+    return tuple;
 }
 
 static int
@@ -307,10 +346,16 @@ Decoder_feed_encoder(DecoderObject *self, PyObject *args, PyObject *kwargs)
     }
 
     list = PyList_New(0);
+    if (list == NULL)
+        return NULL;
     STAILQ_FOREACH(hblock, &self->pending_blocks, entries) {
         if (!hblock->blocked) {
             value = PyLong_FromUnsignedLongLong(hblock->stream_id);
-            PyList_Append(list, value);
+            if (value == NULL || PyList_Append(list, value) < 0) {
+                Py_XDECREF(value);
+                Py_DECREF(list);
+                return NULL;
+            }
             Py_DECREF(value);
         }
     }
@@ -334,7 +379,7 @@ Decoder_feed_header(DecoderObject *self, PyObject *args, PyObject *kwargs)
     uint64_t stream_id;
     const unsigned char *data;
     Py_ssize_t data_len;
-    PyObject *control, *tuple;
+    PyObject *tuple;
     size_t dec_len = DEC_BUF_SZ;
     enum lsqpack_read_header_status status;
     struct header_block *hblock;
@@ -351,6 +396,8 @@ Decoder_feed_header(DecoderObject *self, PyObject *args, PyObject *kwargs)
         }
     }
     hblock = header_block_new(stream_id, data, data_len, self->max_field_section_size);
+    if (hblock == NULL)
+        return NULL;
 
     status = lsqpack_dec_header_in(
         &self->dec,
@@ -369,18 +416,16 @@ Decoder_feed_header(DecoderObject *self, PyObject *args, PyObject *kwargs)
         PyErr_Format(StreamBlocked, "stream %llu is blocked", (unsigned long long)stream_id);
         return NULL;
     } else if (status != LQRHS_DONE) {
+        // Keep any exception raised while decoding, such as a MemoryError.
         if (hblock->field_section_too_large)
             raise_field_section_too_large(self, stream_id);
-        else
+        else if (!PyErr_Occurred())
             PyErr_Format(DecompressionFailed, "lsqpack_dec_header_in for stream %llu failed", (unsigned long long)stream_id);
         header_block_free(hblock);
         return NULL;
     }
 
-    control = PyBytes_FromStringAndSize((const char*)self->dec_buf, dec_len);
-    tuple = PyTuple_Pack(2, control, hblock->headers);
-    Py_DECREF(control);
-
+    tuple = decoded_header_block(self, hblock, dec_len);
     header_block_free(hblock);
 
     return tuple;
@@ -402,7 +447,7 @@ Decoder_resume_header(DecoderObject *self, PyObject *args, PyObject *kwargs)
     char *kwlist[] = {"stream_id", NULL};
     struct unsigned_arg stream_id_arg = {.name = "stream_id", .max = VARINT_MAX, .max_text = "2**62 - 1"};
     uint64_t stream_id;
-    PyObject *control, *tuple;
+    PyObject *tuple;
     size_t dec_len = DEC_BUF_SZ;
     enum lsqpack_read_header_status status;
     struct header_block *hblock;
@@ -442,19 +487,17 @@ Decoder_resume_header(DecoderObject *self, PyObject *args, PyObject *kwargs)
         PyErr_Format(StreamBlocked, "stream %llu is blocked", (unsigned long long)stream_id);
         return NULL;
     } else if (status != LQRHS_DONE) {
+        // Keep any exception raised while decoding, such as a MemoryError.
         if (hblock->field_section_too_large)
             raise_field_section_too_large(self, stream_id);
-        else
+        else if (!PyErr_Occurred())
             PyErr_Format(DecompressionFailed, "lsqpack_dec_header_read for stream %llu failed (%d)", (unsigned long long)stream_id, status);
         STAILQ_REMOVE(&self->pending_blocks, hblock, header_block, entries);
         header_block_free(hblock);
         return NULL;
     }
 
-    control = PyBytes_FromStringAndSize((const char*)self->dec_buf, dec_len);
-    tuple = PyTuple_Pack(2, control, hblock->headers);
-    Py_DECREF(control);
-
+    tuple = decoded_header_block(self, hblock, dec_len);
     STAILQ_REMOVE(&self->pending_blocks, hblock, header_block, entries);
     header_block_free(hblock);
 
@@ -472,6 +515,8 @@ static PyMethodDef Decoder_methods[] = {
 PyDoc_STRVAR(Decoder__doc__,
     "Decoder(max_table_capacity: int, blocked_streams: int, *, max_field_section_size: int = 262144)\n\n"
     "QPACK decoder.\n\n"
+    "If a method raises :class:`MemoryError`, the decoder may no longer agree with the "
+    "peer's encoder, so it must not be used any more: close the connection.\n\n"
     ":param max_table_capacity: the maximum size in bytes of the dynamic table\n"
     ":param blocked_streams: the maximum number of streams that could be blocked\n"
     ":param max_field_section_size: the maximum size in bytes of the decoded headers of "
@@ -731,11 +776,13 @@ Encoder_encode(EncoderObject *self, PyObject *args, PyObject *kwargs)
     pfx_off = PREFIX_MAX_SIZE - pfx_len;
     memcpy(self->hdr_buf + pfx_off, self->pfx_buf, pfx_len);
 
+    // If this fails, the encoder stream data and the header block are lost,
+    // although the encoder's state already accounts for them.
     name = PyBytes_FromStringAndSize((const char*)self->enc_buf, enc_off);
     value = PyBytes_FromStringAndSize((const char*)self->hdr_buf + pfx_off, hdr_off - pfx_off);
-    tuple = PyTuple_Pack(2, name, value);
-    Py_DECREF(name);
-    Py_DECREF(value);
+    tuple = name && value ? PyTuple_Pack(2, name, value) : NULL;
+    Py_XDECREF(name);
+    Py_XDECREF(value);
 
     return tuple;
 }
@@ -773,7 +820,9 @@ static PyMethodDef Encoder_methods[] = {
 
 PyDoc_STRVAR(Encoder__doc__,
     "Encoder()\n\n"
-    "QPACK encoder.\n");
+    "QPACK encoder.\n\n"
+    "If a method raises :class:`MemoryError`, the encoder may no longer agree with the "
+    "peer's decoder, so it must not be used any more: close the connection.\n");
 
 static PyType_Slot EncoderType_slots[] = {
     {Py_tp_dealloc, Encoder_dealloc},
@@ -805,6 +854,27 @@ static struct PyModuleDef moduledef = {
     NULL,                               /* m_free */
 };
 
+// Create an exception class, keep a reference to it in `*exc`, and add it to
+// the module.
+static int
+add_exception(PyObject *m, PyObject **exc, const char *name, const char *doc, PyObject *base)
+{
+    *exc = PyErr_NewExceptionWithDoc(name, doc, base, NULL);
+    if (*exc == NULL)
+        return -1;
+    return PyModule_AddObjectRef(m, strrchr(name, '.') + 1, *exc);
+}
+
+// Create a type, keep a reference to it in `*type`, and add it to the module.
+static int
+add_type(PyObject *m, PyObject **type, PyType_Spec *spec)
+{
+    *type = PyType_FromSpec(spec);
+    if (*type == NULL)
+        return -1;
+    return PyModule_AddObjectRef(m, strrchr(spec->name, '.') + 1, *type);
+}
+
 PyMODINIT_FUNC
 PyInit__binding(void)
 {
@@ -814,50 +884,31 @@ PyInit__binding(void)
     if (m == NULL)
         return NULL;
 
-    DecompressionFailed = PyErr_NewExceptionWithDoc(MODULE_NAME ".DecompressionFailed",
-        "A header block could not be decoded.",
-        PyExc_ValueError, NULL);
-    Py_INCREF(DecompressionFailed);
-    PyModule_AddObject(m, "DecompressionFailed", DecompressionFailed);
-
-    DecoderStreamError = PyErr_NewExceptionWithDoc(MODULE_NAME ".DecoderStreamError",
-        "Data from the decoder stream could not be processed.",
-        PyExc_ValueError, NULL);
-    Py_INCREF(DecoderStreamError);
-    PyModule_AddObject(m, "DecoderStreamError", DecoderStreamError);
-
-    EncoderStreamError = PyErr_NewExceptionWithDoc(MODULE_NAME ".EncoderStreamError",
-        "Data from the encoder stream could not be processed.",
-        PyExc_ValueError, NULL);
-    Py_INCREF(EncoderStreamError);
-    PyModule_AddObject(m, "EncoderStreamError", EncoderStreamError);
-
-    FieldSectionTooLarge = PyErr_NewExceptionWithDoc(MODULE_NAME ".FieldSectionTooLarge",
-        "The decoded headers of a header block exceed the maximum field section size.\n\n"
-        "It is a :class:`DecompressionFailed`, so that callers which only catch the latter "
-        "refuse such header blocks too. The header block is discarded and the decoder "
-        "remains usable: to keep the connection open, call :meth:`Decoder.cancel_stream`.",
-        DecompressionFailed, NULL);
-    Py_INCREF(FieldSectionTooLarge);
-    PyModule_AddObject(m, "FieldSectionTooLarge", FieldSectionTooLarge);
-
-    StreamBlocked = PyErr_NewExceptionWithDoc(MODULE_NAME ".StreamBlocked",
-        "A header block references dynamic table entries which have not been received yet.\n\n"
-        "Call :meth:`Decoder.resume_header` once :meth:`Decoder.feed_encoder` returns the "
-        "stream's ID.",
-        PyExc_ValueError, NULL);
-    Py_INCREF(StreamBlocked);
-    PyModule_AddObject(m, "StreamBlocked", StreamBlocked);
-
-    DecoderType = PyType_FromSpec(&DecoderType_spec);
-    if (DecoderType == NULL)
+    if (add_exception(m, &DecompressionFailed, MODULE_NAME ".DecompressionFailed",
+            "A header block could not be decoded.",
+            PyExc_ValueError) < 0 ||
+        add_exception(m, &DecoderStreamError, MODULE_NAME ".DecoderStreamError",
+            "Data from the decoder stream could not be processed.",
+            PyExc_ValueError) < 0 ||
+        add_exception(m, &EncoderStreamError, MODULE_NAME ".EncoderStreamError",
+            "Data from the encoder stream could not be processed.",
+            PyExc_ValueError) < 0 ||
+        add_exception(m, &FieldSectionTooLarge, MODULE_NAME ".FieldSectionTooLarge",
+            "The decoded headers of a header block exceed the maximum field section size.\n\n"
+            "It is a :class:`DecompressionFailed`, so that callers which only catch the latter "
+            "refuse such header blocks too. The header block is discarded and the decoder "
+            "remains usable: to keep the connection open, call :meth:`Decoder.cancel_stream`.",
+            DecompressionFailed) < 0 ||
+        add_exception(m, &StreamBlocked, MODULE_NAME ".StreamBlocked",
+            "A header block references dynamic table entries which have not been received yet.\n\n"
+            "Call :meth:`Decoder.resume_header` once :meth:`Decoder.feed_encoder` returns the "
+            "stream's ID.",
+            PyExc_ValueError) < 0 ||
+        add_type(m, &DecoderType, &DecoderType_spec) < 0 ||
+        add_type(m, &EncoderType, &EncoderType_spec) < 0) {
+        Py_DECREF(m);
         return NULL;
-    PyModule_AddObject(m, "Decoder", DecoderType);
-
-    EncoderType = PyType_FromSpec(&EncoderType_spec);
-    if (EncoderType == NULL)
-        return NULL;
-    PyModule_AddObject(m, "Encoder", EncoderType);
+    }
 
     return m;
 }
