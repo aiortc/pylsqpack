@@ -10,4 +10,4 @@ from ._binding import (
     StreamBlocked,
 )
 
-__version__ = "1.1.0"
+__version__ = "1.1.1"

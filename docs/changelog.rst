@@ -3,6 +3,14 @@ Changelog
 
 .. currentmodule:: pylsqpack
 
+1.1.1
+-----
+
+* Cap the encoder's dynamic table at 4096 bytes, whatever the decoder allows,
+  as lsquic and nghttp3 do. This lowers memory use per connection.
+* Accept any HTTP/3 setting value in :meth:`Encoder.apply_settings`, up to
+  2**62 - 1. Since 1.1.0, values of 2**32 or more were refused.
+
 1.1.0
 -----
 
