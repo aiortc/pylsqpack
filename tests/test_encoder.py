@@ -4,15 +4,47 @@ from pylsqpack import DecoderStreamError, Encoder
 
 
 class EncoderTest(TestCase):
+    def test_apply_settings(self) -> None:
+        """
+        The encoder accepts any value the decoder's settings can carry, and uses
+        a dynamic table of at most 4096 bytes whatever the decoder allows.
+        """
+        for args, control in [
+            ((0, 0), b""),
+            ((0x100, 0x10), b"\x3f\xe1\x01"),
+            ((4096, 0x10), b"\x3f\xe1\x1f"),
+            ((65536, 0x10), b"\x3f\xe1\x1f"),
+            ((2**32, 2**32), b"\x3f\xe1\x1f"),
+            ((2**62 - 1, 2**62 - 1), b"\x3f\xe1\x1f"),
+        ]:
+            with self.subTest(args=args):
+                self.assertEqual(Encoder().apply_settings(*args), control)
+
+    def test_apply_settings_blocked_streams(self) -> None:
+        """
+        The encoder risks blocking a stream, by referring to an entry which the
+        decoder has not acknowledged, only if the decoder allows blocked streams.
+        """
+        headers = [(b"x-n", b"1")] * 2
+        for blocked_streams, encoded in [
+            (0, (b"", b"\x00\x00#x-n\x011#x-n\x011")),
+            (1, (b"Cx-n\x011", b"\x02\x80#x-n\x011\x10")),
+            (2**32, (b"Cx-n\x011", b"\x02\x80#x-n\x011\x10")),
+        ]:
+            with self.subTest(blocked_streams=blocked_streams):
+                encoder = Encoder()
+                encoder.apply_settings(4096, blocked_streams)
+                self.assertEqual(encoder.encode(0, headers), encoded)
+
     def test_apply_settings_invalid_arguments(self) -> None:
         """
-        The settings must fit in an unsigned int without wrapping around.
+        The settings must be QUIC variable-length integers.
         """
         for args, message in [
-            ((-1, 16), "max_table_capacity must be between 0 and 2**32 - 1"),
-            ((2**32, 16), "max_table_capacity must be between 0 and 2**32 - 1"),
-            ((4096, -1), "blocked_streams must be between 0 and 2**32 - 1"),
-            ((4096, 2**32), "blocked_streams must be between 0 and 2**32 - 1"),
+            ((-1, 16), "max_table_capacity must be between 0 and 2**62 - 1"),
+            ((2**62, 16), "max_table_capacity must be between 0 and 2**62 - 1"),
+            ((4096, -1), "blocked_streams must be between 0 and 2**62 - 1"),
+            ((4096, 2**62), "blocked_streams must be between 0 and 2**62 - 1"),
         ]:
             with self.subTest(args=args):
                 with self.assertRaises(ValueError) as cm:

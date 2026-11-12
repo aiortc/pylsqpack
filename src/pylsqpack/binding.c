@@ -25,6 +25,11 @@
 #define FIELD_OVERHEAD_MAX 8
 #define MIN_BUF_SZ 64
 
+// The largest dynamic table the encoder uses, whatever the decoder allows. An
+// encoder may use less than the decoder's maximum (RFC 9204 section 3.2.3), and
+// the encoder's memory grows with its table.
+#define MAX_ENCODER_TABLE_CAPACITY 4096
+
 // The largest QUIC variable-length integer, which bounds stream IDs and HTTP/3
 // setting values (RFC 9000 section 16).
 #define VARINT_MAX ((1ULL << 62) - 1)
@@ -560,7 +565,9 @@ Encoder_dealloc(EncoderObject *self)
 
 PyDoc_STRVAR(Encoder_apply_settings__doc__,
     "apply_settings(max_table_capacity: int, blocked_streams: int) -> bytes\n\n"
-    "Apply the settings received from the encoder.\n\n"
+    "Apply the settings received from the decoder.\n\n"
+    "The encoder uses a dynamic table of at most 4096 bytes, whatever the "
+    "decoder allows.\n\n"
     ":param max_table_capacity: the maximum size in bytes of the dynamic table\n"
     ":param blocked_streams: the maximum number of streams that could be blocked\n");
 
@@ -568,8 +575,9 @@ static PyObject*
 Encoder_apply_settings(EncoderObject *self, PyObject *args, PyObject *kwargs)
 {
     char *kwlist[] = {"max_table_capacity", "blocked_streams", NULL};
-    struct unsigned_arg max_table_capacity = {.name = "max_table_capacity", .max = UINT_MAX, .max_text = "2**32 - 1"};
-    struct unsigned_arg blocked_streams = {.name = "blocked_streams", .max = UINT_MAX, .max_text = "2**32 - 1"};
+    struct unsigned_arg max_table_capacity = {.name = "max_table_capacity", .max = VARINT_MAX, .max_text = "2**62 - 1"};
+    struct unsigned_arg blocked_streams = {.name = "blocked_streams", .max = VARINT_MAX, .max_text = "2**62 - 1"};
+    unsigned max_table_size, dyn_table_size, max_risked_streams;
     unsigned char tsu_buf[LSQPACK_LONGEST_SDTC];
     size_t tsu_len = sizeof(tsu_buf);
 
@@ -577,7 +585,16 @@ Encoder_apply_settings(EncoderObject *self, PyObject *args, PyObject *kwargs)
                                      convert_unsigned, &blocked_streams))
         return NULL;
 
-    if (lsqpack_enc_init(&self->enc, NULL, max_table_capacity.value, max_table_capacity.value, blocked_streams.value,
+    // ls-qpack takes the settings as unsigned ints. Capping the decoder's
+    // maximum only matters once the insert count wraps around, after about
+    // 2**28 insertions.
+    max_table_size = max_table_capacity.value < UINT_MAX ? (unsigned)max_table_capacity.value : UINT_MAX;
+    max_risked_streams = blocked_streams.value < UINT_MAX ? (unsigned)blocked_streams.value : UINT_MAX;
+    dyn_table_size = max_table_size < MAX_ENCODER_TABLE_CAPACITY ? max_table_size : MAX_ENCODER_TABLE_CAPACITY;
+
+    // ls-qpack counts insertions with the decoder's maximum (RFC 9204 section
+    // 4.5.1.1), and sizes the encoder's memory from the table it uses.
+    if (lsqpack_enc_init(&self->enc, NULL, max_table_size, dyn_table_size, max_risked_streams,
                          LSQPACK_ENC_OPT_STAGE_2, tsu_buf, &tsu_len) != 0) {
         PyErr_SetString(PyExc_RuntimeError, "lsqpack_enc_init failed");
         return NULL;
