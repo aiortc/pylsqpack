@@ -100,11 +100,12 @@ class RoundtripTest(TestCase):
     def test_large_headers_with_settings(self) -> None:
         # Regression test for #57: when the dynamic table is enabled, inserting
         # a large header produces encoder stream data, which the encoder used
-        # to write into a separate fixed 4 kB buffer.
+        # to write into a separate fixed 4 kB buffer. The encoder's dynamic
+        # table is now at most 4096 bytes, so the header must fit in it.
         encoder = Encoder()
         decoder = Decoder(0x4000, 0x10)
         stream_id = 0
-        headers = [(b"x-large", b"c" * 8000)]
+        headers = [(b"x-large", b"c" * 4000)]
 
         # apply decoder settings
         encoder.apply_settings(0x4000, 0x10)
@@ -115,7 +116,7 @@ class RoundtripTest(TestCase):
         # a literal in the header block, and the encoder stream is empty
         control, data = encoder.encode(stream_id, headers)
         self.assertEqual(control, b"")
-        self.assertEqual(len(data), 5012)
+        self.assertEqual(len(data), 2512)
 
         # decode headers
         decoder.feed_encoder(control)
@@ -126,10 +127,10 @@ class RoundtripTest(TestCase):
         # ROUND 2
 
         # encode headers, the header has been seen before so it is inserted
-        # into the dynamic table: the encoder stream buffer must grow beyond
-        # 4 kB, while the header block only holds a reference to the entry
+        # into the dynamic table: the encoder stream buffer must grow, while
+        # the header block only holds a reference to the entry
         control, data = encoder.encode(stream_id, headers)
-        self.assertEqual(len(control), 5010)
+        self.assertEqual(len(control), 2510)
         self.assertEqual(data, b"\x02\x80\x10")
 
         # decode headers
@@ -153,6 +154,30 @@ class RoundtripTest(TestCase):
         control, headers = decoder.feed_header(stream_id, data)
         self.assertEqual(control, b"")
         self.assertEqual(headers, [(b"one", b"foo"), (b"two", b"bar")])
+
+    def test_with_large_settings(self) -> None:
+        """
+        When the decoder allows a larger dynamic table than the encoder uses,
+        header blocks still refer to the right entries once the insert count
+        wraps around, as the encoder counts with the decoder's maximum (RFC 9204
+        section 4.5.1.1).
+        """
+        encoder = Encoder()
+        decoder = Decoder(65536, 0x10)
+        decoder.feed_encoder(encoder.apply_settings(65536, 0x10))
+
+        # each header block inserts a new field, more than twice as many as fit
+        # in a 4096-byte table
+        for i in range(300):
+            stream_id = i * 4
+            headers = [(b"x-n", b"%d" % i)] * 2
+            control, data = encoder.encode(stream_id, headers)
+            self.assertNotEqual(control, b"")
+
+            self.assertEqual(decoder.feed_encoder(control), [])
+            control, decoded = decoder.feed_header(stream_id, data)
+            self.assertEqual(decoded, headers)
+            encoder.feed_decoder(control)
 
     def test_with_settings(self) -> None:
         encoder = Encoder()
