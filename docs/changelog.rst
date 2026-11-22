@@ -3,6 +3,13 @@ Changelog
 
 .. currentmodule:: pylsqpack
 
+1.1.2
+-----
+
+* Support Python 3.10 again, so that applications which cannot move to
+  Python 3.11 yet get the fixes made since 0.3.24. Support had been dropped in
+  1.0.0.
+
 1.1.1
 -----
 
