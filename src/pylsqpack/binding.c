@@ -1,10 +1,11 @@
 #define PY_SSIZE_T_CLEAN
 
+#include <Python.h>
+
 #include <assert.h>
 #include <limits.h>
 #include <string.h>
 
-#include <Python.h>
 #include "lsqpack.h"
 #include "lsxpack_header.h"
 

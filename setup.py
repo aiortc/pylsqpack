@@ -18,7 +18,7 @@ setuptools.setup(
     ext_modules=[
         setuptools.Extension(
             "pylsqpack._binding",
-            define_macros=[("Py_LIMITED_API", "0x030B0000")],
+            define_macros=[("Py_LIMITED_API", "0x030A0000")],
             extra_compile_args=extra_compile_args,
             include_dirs=include_dirs,
             py_limited_api=True,
@@ -29,5 +29,5 @@ setuptools.setup(
             ],
         ),
     ],
-    options={"bdist_wheel": {"py_limited_api": "cp311"}},
+    options={"bdist_wheel": {"py_limited_api": "cp310"}},
 )
