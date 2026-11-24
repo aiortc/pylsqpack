@@ -1,0 +1,69 @@
+name: build
+
+on: workflow_call
+
+jobs:
+
+  package-source:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          submodules: true
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.10"
+      - name: Build source package
+        run: |
+          pip install -U build
+          python -m build --sdist
+      - name: Upload source package
+        uses: actions/upload-artifact@v7
+        with:
+          name: dist-source
+          path: dist/
+
+  package-wheel:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        include:
+          - os: macos-15
+            arch: arm64
+          - os: macos-15-intel
+            arch: x86_64
+          - os: ubuntu-24.04-arm
+            arch: aarch64
+          # Docker on the Ubuntu 26.04 image denies 32-bit containers network
+          # access: https://github.com/actions/runner-images/issues/14790
+          - os: ubuntu-24.04
+            arch: i686
+          - os: ubuntu-latest
+            arch: x86_64
+          - os: windows-latest
+            arch: AMD64
+          - os: windows-latest
+            arch: x86
+          - os: windows-11-arm
+            arch: ARM64
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          submodules: true
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.11"
+      - name: Build wheels
+        shell: bash
+        env:
+          CIBW_ARCHS: ${{ matrix.arch }}
+          CIBW_SKIP: 'cp3??t-*'
+          CIBW_TEST_COMMAND: python -m unittest discover -s {project}/tests
+        run: |
+          pip install cibuildwheel
+          cibuildwheel --output-dir dist
+      - name: Upload wheels
+        uses: actions/upload-artifact@v7
+        with:
+          name: dist-wheel-${{ matrix.os }}-${{ matrix.arch }}
+          path: dist/
