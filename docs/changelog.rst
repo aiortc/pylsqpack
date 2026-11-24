@@ -3,6 +3,11 @@ Changelog
 
 .. currentmodule:: pylsqpack
 
+1.1.3
+-----
+
+* Publish releases using PyPI trusted publishing, with attestations.
+
 1.1.2
 -----
 
