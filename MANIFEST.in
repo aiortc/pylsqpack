@@ -1,5 +1,7 @@
-exclude .gitmodules .readthedocs.yaml SECURITY.md
+exclude .gitmodules
+exclude .readthedocs.yaml
 include LICENSE
+include SECURITY.md
 recursive-include docs *.py *.rst Makefile
 recursive-include requirements *.txt
 recursive-include tests *.py
